@@ -9,9 +9,12 @@ namespace atlas
     class TranslatedPage
     {
     public:
-        TranslatedPage(uint32_t block_size, uint64_t addr_mask,
+        TranslatedPage(uint32_t block_size,
+                       uint64_t addr_mask,
+                       ActionGroup * fetch_action_group,
                        ActionGroup * decode_action_group) :
-            decode_block_(block_size, decode_action_group),
+            decode_block_(block_size. {decode_action_group}),
+            fetch_action_group_(fetch_action_group),
             addr_mask_(addr_mask),
             offset_mask_(~addr_mask)
         {
@@ -19,7 +22,6 @@ namespace atlas
                 atlas::Action::createAction<&TranslatedPage::translated_page_execute_>(this,
                                                                                       "TranslatedPageExecute",
                                                                                       ActionTags::TRANSLATION_PAGE_EXECUTE));
-            decode_block_.resize(block_size);
         }
 
         ActionGroup * getTranslatedPageActionGroup() { return &translated_page_group_; }
@@ -35,14 +37,15 @@ namespace atlas
         class InstExecute
         {
         public:
-            InstExecute()
+            InstExecute(ActionGroup * decode_action_group) :
+                decode_action_group_(decode_action_group)
             {
-                inst_execute_group_.addAction(
+                inst_setup_group_.addAction(
                     atlas::Action::createAction<&InstExecute::setup_inst_>(this,
                                                                            "TranslatedPageSetupInst"));
             }
 
-            ActionGroup * getInstActionGroup() { return &inst_execute_group_; }
+            ActionGroup * getInstActionGroup() { return inst_action_group_; }
 
         private:
 
@@ -50,13 +53,16 @@ namespace atlas
             Action::ItrType setup_inst_(AtlasState* state,
                                         Action::ItrType action_it);
 
-            ActionGroup  inst_execute_group_;
+            ActionGroup * decode_action_group_ = nullptr;
+            ActionGroup   inst_setup_group_;
+            ActionGroup * inst_action_group = &inst_setup_group_;
             AtlasInstPtr inst_;
         };
 
         // Eventually this vector will be populated with just pure
         // instruction execution action groups
         std::vector<InstExecute> decode_block_;
+        ActionGroup * fetch_action_group_ = nullptr;
 
         const uint64_t addr_mask_;
         const uint64_t offset_mask_;

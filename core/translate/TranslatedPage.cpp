@@ -19,7 +19,7 @@ namespace atlas
         }
         else {
             // Go back to fetch
-            translated_page_group_.setNextActionGroup(&fetch_action_group_);
+            translated_page_group_.setNextActionGroup(fetch_action_group_);
         }
 
         // The translated page cannot continue.
@@ -31,14 +31,16 @@ namespace atlas
                                                              Action::ItrType action_it);
     {
         // Decode the instruction at the given PC (in AtlasState)
-        auto execute_group = decode_group->execute();
+        auto execute_group = decode_action_group->execute();
         sparta_assert(execute_group->hasTag(ActionTags::EXECUTE_TAG));
-        inst_ = state->getCurrentInst();
 
         // Set up the execution of the instruction and reset the
         // instruction execute group to the instruction that was just
         // setup
-        inst_execute_group_ = execute_group->execute();
+        inst_action_group_ = execute_group->execute();
+
+        // Capture the instruction late -- the above groups can throw
+        inst_ = state->getCurrentInst();
 
         // Go to end...
         return ++action_it;
