@@ -4,9 +4,8 @@
 
 namespace atlas
 {
-    class ActionTags
+    namespace ActionTags
     {
-      public:
         // Core Actions
         static const ActionTagType FETCH_TAG;
         static const ActionTagType INST_TRANSLATE_TAG;

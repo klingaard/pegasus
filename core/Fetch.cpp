@@ -77,22 +77,24 @@ namespace atlas
         // There are several possible scenarios that result in Decode generating a valid
         // instruction:
         //
-        // 1. The 32 bit fetch access does not cross a page boundary. The 32 bits read from memory
-        // are
-        //    decoded as a non-compressed instruction.
+        // 1. The 32 bit fetch access does not cross a page
+        //    boundary. The 32 bits read from memory are decoded as a
+        //    non-compressed instruction.
         //
-        // 2. The 32 bit fetch access does not cross a page boundary. The 32 bits read from memory
-        // are
-        //    decoded as a compressed instruction. The extra 16 bits are discarded.
+        // 2. The 32 bit fetch access does not cross a page
+        //    boundary. The 32 bits read from memory are decoded as a
+        //    compressed instruction. The extra 16 bits are discarded.
         //
-        // 3. The 32 bit fetch access crosses a page boundary. The first 16 bits read are a
-        // compressed
-        //    instruction. The second 16 bits are never translated or read from memory.
+        // 3. The 32 bit fetch access crosses a page boundary. The
+        //    first 16 bits read are a compressed instruction. The
+        //    second 16 bits are never translated or read from memory.
         //
-        // 4. The 32 bit fetch access crosses a page boundary. The first 16 bits read are not a
-        // valid
-        //    compressed instruction. The second 16 bits are translated and read from memory. The
-        //    combined 32 bits are decoded as a non-compressed instruction.
+        // 4. The 32 bit fetch access crosses a page boundary. The
+        //    first 16 bits read are not a valid compressed
+        //    instruction. The second 16 bits are translated and read
+        //    from memory. The combined 32 bits are decoded as a
+        //    non-compressed instruction.
+        //
         const bool page_crossing_access = result.getSize() == 2;
 
         // Read opcode from memory
@@ -140,7 +142,8 @@ namespace atlas
             inst = state->getMavis()->makeInst(opcode, state);
             assert(state->getCurrentInst() == nullptr);
             state->setCurrentInst(inst);
-            // Set next PC, can be overidden by a branch/jump instruction or an exception
+            // Set next PC, can be overidden by a branch/jump
+            // instruction or an exception
             state->setNextPc(state->getPc() + opcode_size);
         }
         catch (const mavis::BaseException & e)
@@ -148,8 +151,8 @@ namespace atlas
             THROW_ILLEGAL_INST;
         }
 
-        // If we only fetched 2B and found a valid compressed inst, then cancel the translation
-        // request for the second 2B
+        // If we only fetched 2B and found a valid compressed inst,
+        // then cancel the translation request for the second 2B
         if (page_crossing_access && (opcode_size == 2))
         {
             state->getFetchTranslationState()->popRequest();
