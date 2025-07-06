@@ -1,4 +1,5 @@
 #include "TranslatedPage.hpp"
+#include "core/AtlasState.hpp"
 
 namespace atlas
 {
@@ -6,7 +7,7 @@ namespace atlas
                                                              Action::ItrType action_it)
     {
         // Check to see if we're still on the same page
-        const XLEN vaddr = state->getPc();
+        const auto vaddr = state->getPc();
         if ((addr_mask_ & vaddr) == addr_mask_)
         {
             const auto offset = vaddr & ~offset_mask_;
@@ -28,22 +29,23 @@ namespace atlas
 
     // Need to decode the instruction at the offset
     Action::ItrType TranslatedPage::InstExecute::setup_inst_(AtlasState* state,
-                                                             Action::ItrType action_it);
+                                                             Action::ItrType action_it)
     {
         // Decode the instruction at the given PC (in AtlasState)
-        auto execute_group = decode_action_group->execute();
+        auto execute_group = decode_action_group_->execute(state);
         sparta_assert(execute_group->hasTag(ActionTags::EXECUTE_TAG));
 
         // Set up the execution of the instruction and reset the
         // instruction execute group to the instruction that was just
         // setup
-        inst_action_group_ = execute_group->execute();
+        inst_action_group_ = execute_group->execute(state);
 
         // Setup the instruction's next action to return to this
         // translated page
         inst_action_group_->setNextActionGroup(translated_page_group_);
 
-        // Capture the instruction late -- the above executes can throw
+        // Capture the instruction late -- the above execute functions
+        // can throw
         inst_ = state->getCurrentInst();
 
         // Go to end...

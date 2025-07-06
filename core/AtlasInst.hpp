@@ -190,11 +190,11 @@ namespace atlas
         const mavis::OperandInfo::Element* rs3_info_;
         const mavis::OperandInfo::Element* rd_info_;
         const mavis::OperandInfo::Element* rd2_info_;
-        sparta::Register* rs1_reg_;
-        sparta::Register* rs2_reg_;
-        sparta::Register* rs3_reg_;
-        sparta::Register* rd_reg_;
-        sparta::Register* rd2_reg_;
+        sparta::Register* rs1_reg_ = nullptr;
+        sparta::Register* rs2_reg_ = nullptr;
+        sparta::Register* rs3_reg_ = nullptr;
+        sparta::Register*  rd_reg_ = nullptr;
+        sparta::Register* rd2_reg_ = nullptr;
 
         // Translation state for load/store instructions
         AtlasTranslationState translation_state_;

@@ -33,7 +33,7 @@ class AtlasInstructionTester
         state_->setPc(pc);
 
         // Fetch and Execute instruction
-        atlas::ActionGroup* next_action_group = fetch_unit_->getActionGroup();
+        atlas::ActionGroup* next_action_group = fetch_unit_->getFetchActionGroup();
         do
         {
             next_action_group = next_action_group->execute(state_);

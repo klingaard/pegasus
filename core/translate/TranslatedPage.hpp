@@ -3,14 +3,23 @@
 #include <cinttypes>
 
 #include "core/ActionGroup.hpp"
+#include "core/AtlasInst.hpp"
 
 namespace atlas
 {
+    namespace ActionTags
+    {
+        extern const ActionTagType TRANSLATION_PAGE_EXECUTE;
+    }
+
     class TranslatedPage
     {
     public:
+
+        using base_type = TranslatedPage;
+
         TranslatedPage(uint32_t block_size,
-                       uint64_t addr_mask,
+                       Addr addr_mask,
                        ActionGroup * fetch_action_group,
                        ActionGroup * decode_action_group) :
             translated_page_group_("TranslatedPageGroup",
@@ -37,6 +46,9 @@ namespace atlas
         class InstExecute
         {
         public:
+
+            using base_type = InstExecute;
+
             InstExecute(ActionGroup * decode_action_group,
                         ActionGroup * translated_page_group) :
                 decode_action_group_(decode_action_group),
@@ -57,7 +69,7 @@ namespace atlas
 
             ActionGroup * decode_action_group_ = nullptr;
             ActionGroup * translated_page_group_ = nullptr;
-            ActionGroup   inst_setup_group_;
+            ActionGroup   inst_setup_group_{"InstSetupGroup"};
             ActionGroup * inst_action_group_ = &inst_setup_group_;
             AtlasInstPtr inst_;
         };

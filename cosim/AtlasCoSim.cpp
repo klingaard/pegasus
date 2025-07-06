@@ -84,7 +84,7 @@ namespace atlas
 
     cosim::Event AtlasCoSim::step(HartId hart_id)
     {
-        ActionGroup* next_action_group = fetch_.at(hart_id)->getActionGroup();
+        ActionGroup* next_action_group = fetch_.at(hart_id)->getFetchActionGroup();
         do
         {
             next_action_group = next_action_group->execute(state_.at(hart_id));

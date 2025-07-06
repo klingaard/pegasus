@@ -1,4 +1,5 @@
 #include "include/ActionTags.hpp"
+#include "core/translate/TranslatedPage.hpp"
 #include "core/ActionTagFactory.hpp"
 
 namespace atlas
@@ -13,6 +14,8 @@ namespace atlas
     const ActionTagType ActionTags::DATA_TRANSLATE_TAG =
         ActionTagFactory::createTag("DATA_TRANSLATE");
     const ActionTagType ActionTags::EXCEPTION_TAG = ActionTagFactory::createTag("EXCEPTION");
+    const ActionTagType ActionTags::TRANSLATION_PAGE_EXECUTE = ActionTagFactory::createTag("TRANSLATION_PAGE_EXECUTE");
+
 
     // Stop Simulation
     const ActionTagType ActionTags::STOP_SIM_TAG = ActionTagFactory::createTag("STOP_SIM");
