@@ -39,7 +39,11 @@ namespace atlas
         // setup
         inst_action_group_ = execute_group->execute();
 
-        // Capture the instruction late -- the above groups can throw
+        // Setup the instruction's next action to return to this
+        // translated page
+        inst_action_group_->setNextActionGroup(translated_page_group_);
+
+        // Capture the instruction late -- the above executes can throw
         inst_ = state->getCurrentInst();
 
         // Go to end...
