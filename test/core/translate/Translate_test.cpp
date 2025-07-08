@@ -53,7 +53,8 @@ class AtlasTranslateTester
         EXPECT_THROW(translation_state->getResult());
 
         // Set result
-        translation_state->setResult(vaddr, vaddr | 0x80000000, access_size);
+        translation_state->setResult(vaddr, vaddr | 0x80000000, access_size,
+                                     atlas::PageSize::SIZE_4K);
 
         // Get number of requests and results
         EXPECT_EQUAL(translation_state->getNumRequests(), 1);
@@ -74,7 +75,7 @@ class AtlasTranslateTester
             translation_state->getResult();
         EXPECT_TRUE(result.isValid());
         EXPECT_EQUAL(result.getPAddr(), vaddr | 0x80000000);
-        EXPECT_EQUAL(result.getSize(), access_size);
+        EXPECT_EQUAL(result.getAccessSize(), access_size);
 
         // Still cannot make any new requests until results have been cleared
         EXPECT_THROW(translation_state->makeRequest(0, 0));
@@ -110,9 +111,11 @@ class AtlasTranslateTester
 
         // Set results
         translation_state->setResult(vaddr, vaddr | 0x80000000,
-                                     access_size - request.getMisalignedBytes());
+                                     access_size - request.getMisalignedBytes(),
+                                     atlas::PageSize::SIZE_4K);
         translation_state->setResult(vaddr, (vaddr + request.getMisalignedBytes()) | 0x80000000,
-                                     request.getMisalignedBytes());
+                                     request.getMisalignedBytes(),
+                                     atlas::PageSize::SIZE_4K);
 
         // Get number of requests and results
         EXPECT_EQUAL(translation_state->getNumRequests(), 1);
@@ -148,7 +151,8 @@ class AtlasTranslateTester
             const atlas::AtlasTranslationState::TranslationRequest & request =
                 translation_state->getRequest();
             const uint64_t paddr = request.getVAddr() | 0x80000000;
-            translation_state->setResult(request.getVAddr(), paddr, request.getSize());
+            translation_state->setResult(request.getVAddr(), paddr, request.getAccessSize(),
+                                         atlas::PageSize::SIZE_4K);
             translation_state->popRequest();
 
             // Can't make any new requests
@@ -351,11 +355,11 @@ class AtlasTranslateTester
             translation_state->getResult();
         std::cout << "Translation result:" << std::endl;
         std::cout << "    PA: 0x" << std::hex << result.getPAddr();
-        std::cout << ", Access size: " << std::dec << result.getSize() << "\n\n";
+        std::cout << ", Access size: " << std::dec << result.getAccessSize() << "\n\n";
 
         // Test translation result
         EXPECT_EQUAL(result.getPAddr(), vaddr);
-        EXPECT_EQUAL(result.getSize(), access_size);
+        EXPECT_EQUAL(result.getAccessSize(), access_size);
 
         translation_state->reset();
     }
@@ -421,11 +425,11 @@ class AtlasTranslateTester
             translation_state->getResult();
         std::cout << "Translation result:" << std::endl;
         std::cout << "    PA: 0x" << std::hex << result.getPAddr();
-        std::cout << ", Access size: " << std::dec << result.getSize() << "\n\n";
+        std::cout << ", Access size: " << std::dec << result.getAccessSize() << "\n\n";
 
         // Test translation result
         EXPECT_EQUAL(result.getPAddr(), expected_paddr);
-        EXPECT_EQUAL(result.getSize(), access_size);
+        EXPECT_EQUAL(result.getAccessSize(), access_size);
 
         translation_state->reset();
     }

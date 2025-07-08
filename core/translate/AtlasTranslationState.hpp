@@ -16,18 +16,21 @@ namespace atlas
           public:
             TranslationRequest() = default;
 
-            TranslationRequest(Addr vaddr, size_t size) : vaddr_(vaddr), size_(size) {}
+            TranslationRequest(Addr vaddr, size_t access_size) :
+                vaddr_(vaddr),
+                access_size_(access_size)
+            {}
 
             Addr getVAddr() const { return vaddr_; }
 
-            size_t getSize() const { return size_; }
+            size_t getAccessSize() const { return access_size_; }
 
-            bool isValid() const { return size_ != 0; }
+            bool isValid() const { return access_size_ != 0; }
 
             void setMisaligned(const size_t misaligned_bytes)
             {
                 sparta_assert(misaligned_bytes > 0);
-                sparta_assert(misaligned_bytes < size_);
+                sparta_assert(misaligned_bytes < access_size_);
                 misaligned_bytes_ = misaligned_bytes;
                 misaligned_ = true;
             }
@@ -38,7 +41,7 @@ namespace atlas
 
           private:
             Addr vaddr_ = 0;
-            size_t size_ = 0;
+            size_t access_size_ = 0;
             bool misaligned_ = false;
             size_t misaligned_bytes_ = 0;
         };
@@ -48,10 +51,12 @@ namespace atlas
           public:
             TranslationResult() = default;
 
-            TranslationResult(Addr vaddr, Addr paddr, size_t sz) :
+            TranslationResult(Addr vaddr, Addr paddr,
+                              size_t access_sz, PageSize page_sz) :
                 vaddr_(vaddr),
                 paddr_(paddr),
-                size_(sz)
+                access_size_(access_sz),
+                page_size_(page_sz)
             {
             }
 
@@ -60,22 +65,25 @@ namespace atlas
 
             Addr getPAddr() const { return paddr_; }
 
-            size_t getSize() const { return size_; }
+            size_t getAccessSize() const { return access_size_; }
 
-            bool isValid() const { return size_ != 0; }
+            PageSize getPageSize() const { return page_size_; }
+
+            bool isValid() const { return access_size_ != 0; }
 
           private:
             Addr vaddr_ = 0;
             Addr paddr_ = 0;
-            size_t size_ = 0;
+            size_t access_size_ = 0;
+            PageSize page_size_ = PageSize::INVALID;
         };
 
-        void makeRequest(const Addr vaddr, const size_t size)
+        void makeRequest(const Addr vaddr, const size_t access_size)
         {
-            sparta_assert(size > 0);
+            sparta_assert(access_size > 0);
             sparta_assert(results_cnt_ == 0);
             sparta_assert(requests_cnt_ < requests_.size());
-            requests_[requests_cnt_++] = {vaddr, size};
+            requests_[requests_cnt_++] = {vaddr, access_size};
         }
 
         uint32_t getNumRequests() const { return requests_cnt_; }
@@ -92,10 +100,11 @@ namespace atlas
             --requests_cnt_;
         }
 
-        void setResult(const Addr vaddr, const Addr paddr, const size_t size)
+        void setResult(const Addr vaddr, const Addr paddr,
+                       const size_t access_size, const PageSize page_size)
         {
             sparta_assert(results_cnt_ < results_.size());
-            results_[results_cnt_++] = {vaddr, paddr, size};
+            results_[results_cnt_++] = {vaddr, paddr, access_size, page_size};
         }
 
         uint32_t getNumResults() const { return results_cnt_; }

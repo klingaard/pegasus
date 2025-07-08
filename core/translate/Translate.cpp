@@ -338,7 +338,7 @@ namespace atlas
                                ? (request.getVAddr() + request.getMisalignedBytes())
                                : request.getVAddr();
         const size_t access_size =
-            request.isMisaligned() ? request.getMisalignedBytes() : request.getSize();
+            request.isMisaligned() ? request.getMisalignedBytes() : request.getAccessSize();
 
         // Check if address is misaligned
         const auto indexed_level = level - 1;
@@ -353,7 +353,8 @@ namespace atlas
 
             // Resolve first request
             const size_t first_access_size = access_size - num_misaligned_bytes;
-            translation_state->setResult(vaddr, paddr, first_access_size);
+            translation_state->setResult(vaddr, paddr, first_access_size,
+                                         translate_types::getPageSize<MODE>(level));
 
             // Set request as misaligned
             request.setMisaligned(num_misaligned_bytes);
@@ -361,7 +362,8 @@ namespace atlas
         else
         {
             translation_state->popRequest();
-            translation_state->setResult(vaddr, paddr, access_size);
+            translation_state->setResult(vaddr, paddr, access_size,
+                                         translate_types::getPageSize<MODE>(level));
         }
 
         if (is_misaligned || (translation_state->getNumRequests() > 0))

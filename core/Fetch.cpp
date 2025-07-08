@@ -95,7 +95,7 @@ namespace atlas
         //    from memory. The combined 32 bits are decoded as a
         //    non-compressed instruction.
         //
-        const bool page_crossing_access = result.getSize() == 2;
+        const bool page_crossing_access = result.getAccessSize() == 2;
 
         // Read opcode from memory
         Opcode & opcode = state->getSimState()->current_opcode;

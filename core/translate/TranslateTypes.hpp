@@ -4,6 +4,8 @@
 #include <array>
 #include <map>
 
+#include "include/AtlasTypes.hpp"
+
 namespace atlas::translate_types
 {
     struct FieldDef
