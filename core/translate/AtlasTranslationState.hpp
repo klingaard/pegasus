@@ -56,26 +56,37 @@ namespace atlas
                 vaddr_(vaddr),
                 paddr_(paddr),
                 access_size_(access_sz),
-                page_size_(page_sz)
+                page_mask_(buildAddrMask(page_sz, vaddr))
             {
             }
 
             // Get the original VAddr
             Addr getVAddr() const { return vaddr_; }
 
+            // Get the original PAddr for the original VAddr
             Addr getPAddr() const { return paddr_; }
 
             size_t getAccessSize() const { return access_size_; }
 
-            PageSize getPageSize() const { return page_size_; }
-
             bool isValid() const { return access_size_ != 0; }
 
-          private:
+            // Check to see if the given vaddr is on the same page as
+            // this translation result handles
+            bool isContained(Addr vaddr) const {
+                return (page_mask_ & vaddr) == vaddr_;
+            }
+
+            Addr getOffSet(Addr vaddr) const { return ~page_mask_ & vaddr; }
+
+            Addr getPAddr(Addr vaddr) const {
+                return (page_mask_ & paddr_) | getOffSet(vaddr);
+            }
+
+        private:
             Addr vaddr_ = 0;
             Addr paddr_ = 0;
             size_t access_size_ = 0;
-            PageSize page_size_ = PageSize::INVALID;
+            Addr page_mask_ = 0;
         };
 
         void makeRequest(const Addr vaddr, const size_t access_size)

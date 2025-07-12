@@ -4,6 +4,7 @@
 #include <string>
 #include <ostream>
 #include <array>
+#include <cassert>
 
 namespace atlas
 {
@@ -99,6 +100,35 @@ namespace atlas
         SIZE_256T, // Petapage (Sv57)
         INVALID
     };
+
+    inline Addr buildAddrMask(PageSize pg_size, Addr paddr)
+    {
+        Addr mask = 0;
+        switch(pg_size)
+        {
+            case PageSize::SIZE_4K:
+                mask = ~0x1000;
+            case PageSize::SIZE_2M:
+                mask = ~0x200000;
+                break;
+            case PageSize::SIZE_4M:
+                mask = ~0x400000;
+                break;
+            case PageSize::SIZE_1G:
+                mask = ~0x40000000ull;
+                break;
+            case PageSize::SIZE_512G:
+                mask = ~0x1000000000ull;
+                break;
+            case PageSize::SIZE_256T:
+                mask = ~0x40000000000ull;
+                break;
+            case PageSize::INVALID:
+                assert(!"Invalid PageSize");
+                break;
+        }
+        return mask & paddr;
+    }
 
     static constexpr uint32_t N_MMU_MODES = static_cast<uint32_t>(MMUMode::INVALID);
 

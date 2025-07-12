@@ -27,8 +27,6 @@ namespace atlas
 
         ActionGroup* getFetchActionGroup() { return &fetch_action_group_; }
 
-        ActionGroup* getDecodeActionGroup() { return &decode_action_group_; }
-
       private:
         AtlasState* state_ = nullptr;
 
@@ -37,10 +35,6 @@ namespace atlas
         Action::ItrType fetch_(atlas::AtlasState* state, Action::ItrType action_it);
 
         ActionGroup fetch_action_group_{"Fetch"};
-
-        Action::ItrType decode_(atlas::AtlasState* state, Action::ItrType action_it);
-
-        ActionGroup decode_action_group_{"Decode"};
 
         void advanceSim_();
     };

@@ -18,46 +18,17 @@ namespace atlas
 
         using base_type = TranslatedPage;
 
-        Addr buildAddrMask(PageSize pg_size, Addr paddr)
-        {
-            Addr mask = 0;
-            switch(pg_size)
-            {
-                case PageSize::SIZE_4K:
-                    mask = ~0x1000;
-                case PageSize::SIZE_2M:
-                    mask = ~0x200000;
-                    break;
-                case PageSize::SIZE_4M:
-                    mask = ~0x400000;
-                    break;
-                case PageSize::SIZE_1G:
-                    mask = ~0x40000000ull;
-                    break;
-                case PageSize::SIZE_512G:
-                    mask = ~0x1000000000ull;
-                    break;
-                case PageSize::SIZE_256T:
-                    mask = ~0x40000000000ull;
-                    break;
-                case PageSize::INVALID:
-                    throw sparta::SpartaException("invalid page size");
-                    break;
-            }
-            return mask & paddr;
-        }
-
         TranslatedPage(const AtlasTranslationState::TranslationResult & translation_result,
                        ActionGroup * fetch_action_group,
-                       ActionGroup * decode_action_group) :
+                       ActionGroup * execute_action_group) :
             translated_page_group_("TranslatedPageGroup",
-                                   atlas::Action::createAction<&TranslatedPage::translatedPageExecute_>(this,
-                                                                                                        "TranslatedPageExecute",
-                                                                                                        ActionTags::TRANSLATION_PAGE_EXECUTE)),
-            decode_block_(4096, {decode_action_group, &translated_page_group_}),
+                                   atlas::Action::createAction<
+                                   &TranslatedPage::translatedPageExecute_>(this,
+                                                                            "TranslatedPageExecute",
+                                                                            ActionTags::TRANSLATION_PAGE_EXECUTE)),
+            decode_block_(4096, {&translated_page_group_, execute_action_group}),
             fetch_action_group_(fetch_action_group),
-            addr_mask_(buildAddrMask(translation_result.getPageSize(), translation_result.getPAddr())),
-            offset_mask_(~addr_mask_)
+            translation_result_(translation_result)
         {
         }
 
@@ -77,10 +48,10 @@ namespace atlas
 
             using base_type = InstExecute;
 
-            InstExecute(ActionGroup * decode_action_group,
-                        ActionGroup * translated_page_group) :
-                decode_action_group_(decode_action_group),
-                translated_page_group_(translated_page_group)
+            InstExecute(ActionGroup * translated_page_group,
+                        ActionGroup * execute_page_group) :
+                translated_page_group_(translated_page_group),
+                execute_action_group_(execute_page_group)
             {
                 inst_setup_group_.addAction(
                     atlas::Action::createAction<&InstExecute::setupInst_>(this,
@@ -88,8 +59,8 @@ namespace atlas
             }
 
             InstExecute(InstExecute&& orig) :
-                decode_action_group_(std::move(orig.decode_action_group_)),
-                translated_page_group_(std::move(orig.translated_page_group_))
+                translated_page_group_(std::move(orig.translated_page_group_)),
+                execute_action_group_(std::move(orig.execute_action_group_))
             {
                 inst_setup_group_.addAction(
                     atlas::Action::createAction<&InstExecute::setupInst_>(this,
@@ -97,8 +68,8 @@ namespace atlas
             }
 
             InstExecute(const InstExecute & orig) :
-                decode_action_group_(orig.decode_action_group_),
-                translated_page_group_(orig.translated_page_group_)
+                translated_page_group_(orig.translated_page_group_),
+                execute_action_group_(orig.execute_action_group_)
             {
                 inst_setup_group_.addAction(
                     atlas::Action::createAction<&InstExecute::setupInst_>(this,
@@ -107,8 +78,8 @@ namespace atlas
 
             const InstExecute& operator=(const InstExecute & orig)
             {
-                decode_action_group_ = orig.decode_action_group_;
                 translated_page_group_ = orig.translated_page_group_;
+                execute_action_group_ = orig.execute_action_group_;
                 inst_setup_group_.addAction(
                     atlas::Action::createAction<&InstExecute::setupInst_>(this,
                                                                           "TranslatedPageSetupInst"));
@@ -117,16 +88,24 @@ namespace atlas
 
             ActionGroup * getInstActionGroup() { return inst_action_group_; }
 
+            void setInstAddress(Addr inst_addr) { inst_addr_ = inst_addr; }
+
         private:
 
             // Need to decode the instruction at the offset
             Action::ItrType setupInst_(AtlasState* state,
                                        Action::ItrType action_it);
 
-            ActionGroup * decode_action_group_ = nullptr;
+            // Set the inst pointer in AtlasState when the instruction
+            // is to be executed again
+            Action::ItrType setInst_(AtlasState* state, Action::ItrType action_it);
+
             ActionGroup * translated_page_group_ = nullptr;
             ActionGroup   inst_setup_group_{"InstSetupGroup"};
+            Action        inst_set_inst_{Action::createAction<&InstExecute::setInst_>(this, "InstSetupGroup")};
+            ActionGroup * execute_action_group_ = nullptr;
             ActionGroup * inst_action_group_ = &inst_setup_group_;
+            Addr inst_addr_ = 0;
             AtlasInstPtr inst_;
         };
 
@@ -135,10 +114,6 @@ namespace atlas
         std::vector<InstExecute> decode_block_;
         ActionGroup * fetch_action_group_ = nullptr;
 
-        const Addr addr_mask_;
-        const Addr offset_mask_;
-
-        ActionGroup *decode_action_group_ = nullptr;
-
+        const AtlasTranslationState::TranslationResult translation_result_;
     };
 }
