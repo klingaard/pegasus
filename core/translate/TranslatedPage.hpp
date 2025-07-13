@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cinttypes>
+#include <vector>
+#include <map>
 
 #include "core/ActionGroup.hpp"
 #include "core/AtlasInst.hpp"
@@ -26,8 +28,8 @@ namespace atlas
                                    &TranslatedPage::translatedPageExecute_>(this,
                                                                             "TranslatedPageExecute",
                                                                             ActionTags::TRANSLATION_PAGE_EXECUTE)),
-            decode_block_(4096, {&translated_page_group_, execute_action_group}),
             fetch_action_group_(fetch_action_group),
+            execute_action_group_(execute_action_group),
             translation_result_(translation_result)
         {
         }
@@ -111,8 +113,15 @@ namespace atlas
 
         // Eventually this vector will be populated with just pure
         // instruction execution action groups
-        std::vector<InstExecute> decode_block_;
+        using InstExecuteBlock = std::vector<InstExecute>;
+        std::unordered_map<Addr, InstExecuteBlock> decode_block_;
         ActionGroup * fetch_action_group_ = nullptr;
+        ActionGroup * execute_action_group_ = nullptr;
+
+        // To prevent a construction EVERY TIME the map is queried,
+        // cache a copyable block
+        const InstExecuteBlock default_block_{2048, InstExecute(&translated_page_group_,
+                                                                execute_action_group_)};
 
         const AtlasTranslationState::TranslationResult translation_result_;
     };

@@ -56,9 +56,13 @@ namespace atlas
                 vaddr_(vaddr),
                 paddr_(paddr),
                 access_size_(access_sz),
-                page_mask_(buildAddrMask(page_sz, vaddr))
+                page_index_(pageSize(page_sz) - 1),
+                page_mask_(~(page_index_))
             {
             }
+
+            ///////////////////////////////////////////////////////////////
+            // Methods for the specific vaddr/paddr this result represents
 
             // Get the original VAddr
             Addr getVAddr() const { return vaddr_; }
@@ -70,22 +74,37 @@ namespace atlas
 
             bool isValid() const { return access_size_ != 0; }
 
+            ///////////////////////////////////////////////////////////////
+            // Methods for reusing this translation result for other vaddrs
+
+            //
+            // How addresses are interpreted (example for a 2M page):
+            //
+            //   vaddr = 0xffff_abcd_e020_0000
+            //   page_index_ = SIZE_2M (0x200000 - 1)  == 0x1f_ffff
+            //   page_mask_  = ~page_index_ == 0xffff_ffff_ffe0_0000
+            //
+
             // Check to see if the given vaddr is on the same page as
             // this translation result handles
             bool isContained(Addr vaddr) const {
-                return (page_mask_ & vaddr) == vaddr_;
+                return (page_mask_ & vaddr) == (page_mask_ & vaddr_);
             }
 
-            Addr getOffSet(Addr vaddr) const { return ~page_mask_ & vaddr; }
+            // Based on the page size, generate an address index by
+            // masking the page index
+            Addr genAddrIndx(Addr vaddr) const { return (vaddr & page_index_); }
 
-            Addr getPAddr(Addr vaddr) const {
-                return (page_mask_ & paddr_) | getOffSet(vaddr);
+            // Generate a new PAddr with the given vaddr
+            Addr genPAddr(Addr vaddr) const {
+                return (page_mask_ & paddr_) | genAddrIndx(vaddr);
             }
 
         private:
             Addr vaddr_ = 0;
             Addr paddr_ = 0;
             size_t access_size_ = 0;
+            Addr page_index_ = 0;
             Addr page_mask_ = 0;
         };
 

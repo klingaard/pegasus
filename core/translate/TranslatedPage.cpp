@@ -3,6 +3,52 @@
 
 namespace atlas
 {
+
+    //
+    // This method does the following:
+    //
+    // * For the current PC (vaddr), does that address fall within
+    //   this page?
+    // * If so, dissect the address and look up the InstExecute object
+    //   to execute the instruction
+    // * If the instruction has never been seen before,
+    //   InstExecute::setupInst_ will be called
+    // * If the instruction has been seen before, the instruction's
+    //   handler will be called directly as the return action group
+    //
+    // To find the decoded block that holds preprocessed instructions,
+    // the address is dissected into two parts: index into a map and
+    // an offset into a vector:
+    //
+    //    InstExecute & obj = decoded_inst_map_[addr_idx][offset]
+    //
+    // The addr_idx is calculated by differencing the offset from the
+    // page size.  This will produce an index range between 0 for a 4k
+    // page and 0x3fffffff for 256T page.  Making a vector for large
+    // pages is impractical especially if the program only uses a
+    // fraction of that memory, so use an unordered_map.
+    //
+    // The offset is smallest page supported by RV is 4k (2^12).  This
+    // value can be used as the offset into a simple vector.  However,
+    // the vector does not need to be a 4k in size since instructions
+    // are always aligned (at minimum) to a 2 byte address.
+    // Therefore, the offset can be shifted to the right by 1 to
+    // reduce memory usage (X is "don't care").
+    //
+    //                                                          |11|
+    // |     xlation      |         page index                  |10|987654321|0
+    // +--------------------------------------------------------+------------+-+
+    // |   va->pa bits    |    addr_idx (based on size)         |   offset   |X|
+    // +--------------------------------------------------------+------------+-+
+    //
+    // One of the issues with using 4k page offset is when an half an
+    // opcode is on page 1 and the other half is one page 2.  This
+    // only happens at the 4k address 0xffe.  At this point, the
+    // instruction at 0xffe is either a valid 16-bit opcode (which
+    // nothing happens) or is invalid 16-bit and the next 16-bit are
+    // needed.
+    //
+    //
     Action::ItrType TranslatedPage::translatedPageExecute_(AtlasState* state,
                                                            Action::ItrType action_it)
     {
@@ -10,9 +56,18 @@ namespace atlas
         const auto vaddr = state->getPc();
         if (translation_result_.isContained(vaddr))
         {
-            const auto offset = translation_result_.getOffSet(vaddr);
-            auto & inst_execute = decode_block_.at(offset);
-            inst_execute.setInstAddress(translation_result_.getPAddr(vaddr));
+            // Get the address index and shift out the offset
+            const auto addr_idx = translation_result_.genAddrIndx(vaddr) >> 12;
+
+            // Get the offset (lower 4k) and shift by 1 since that bit
+            // is never set (and we can save some vector space)
+            const auto offset = (vaddr & 0xfffull) >> 1;
+
+            auto inst_execute_pair = decode_block_.try_emplace(addr_idx, default_block_).first;
+
+            auto & inst_execute = inst_execute_pair->second.at(offset);
+
+            inst_execute.setInstAddress(translation_result_.genPAddr(vaddr));
             // If this instruction was never fetched/decoded, the
             // instruction group being called is the Decode action
             // group.  This group returns the execution group
@@ -28,8 +83,13 @@ namespace atlas
         return ++action_it;
     }
 
-    Action::ItrType TranslatedPage::InstExecute::setInst_(AtlasState* state, Action::ItrType action_it) {
+    Action::ItrType TranslatedPage::InstExecute::setInst_(AtlasState* state, Action::ItrType action_it)
+    {
+        // Set the current instruction
         state->setCurrentInst(inst_);
+
+        // Assume we're heading to the next instruction in sequence.
+        // Branches will adjust this.
         state->setNextPc(state->getPc() + inst_->getOpcodeSize());
         return ++action_it;
     }
@@ -40,17 +100,21 @@ namespace atlas
     {
         // Decode the instruction at the given PC (in AtlasState)
 
-        // When compressed instructions are enabled, it is possible for a full sized instruction (32
-        // bits) to cross a 4K page boundary meaning that first 16 bits of the instruction are on a
-        // different page than the second 16 bits. Fetch will always request translation for a 32
-        // bit memory access but Translate may need to be performed twice if it detects that the
-        // access crosses a 4K page boundary. Since it is possible for the first 16 bits translated
-        // and read from memory to result in a valid compressed instruction, Decode must attempt to
-        // decode the first 16 bits before asking Translate to translate the second 16 bit access.
-        // This ensures that the correct translation faults are triggered.
+        // When compressed instructions are enabled, it is possible
+        // for a full sized instruction (32 bits) to cross a 4K page
+        // boundary meaning that first 16 bits of the instruction are
+        // on a different page than the second 16 bits. Fetch will
+        // always request translation for a 32 bit memory access but
+        // Translate may need to be performed twice if it detects that
+        // the access crosses a 4K page boundary. Since it is possible
+        // for the first 16 bits translated and read from memory to
+        // result in a valid compressed instruction, Decode must
+        // attempt to decode the first 16 bits before asking Translate
+        // to translate the second 16 bit access.  This ensures that
+        // the correct translation faults are triggered.
         //
-        // There are several possible scenarios that result in Decode generating a valid
-        // instruction:
+        // There are several possible scenarios that result in Decode
+        // generating a valid instruction:
         //
         // 1. The 32 bit fetch access does not cross a page
         //    boundary. The 32 bits read from memory are decoded as a
