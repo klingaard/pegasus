@@ -134,42 +134,35 @@ namespace atlas
         //    from memory. The combined 32 bits are decoded as a
         //    non-compressed instruction.
         //
-        //const bool page_crossing_access = result.getAccessSize() == 2;
-        const bool page_crossing_access = false;
 
         // Read opcode from memory
         Opcode & opcode = state->getSimState()->current_opcode;
+
+        // Default size
         OpcodeSize opcode_size = 4;
-        if (SPARTA_EXPECT_TRUE(!page_crossing_access))
+
+        if (false == last_entry_)
         {
+            // Grab 4 bytes
             opcode = state->readMemory<uint32_t>(inst_addr_);
-
-            // Compression detection
-            if ((opcode & 0x3) != 0x3)
-            {
-                opcode = opcode & 0xFFFF;
-                opcode_size = 2;
-            }
         }
-        else
-        {
-            if (opcode == 0)
-            {
-                // Load the first 2B, could be a valid 2B compressed inst
-                opcode = state->readMemory<uint16_t>(inst_addr_);
-                opcode_size = 2;
+        else {
+            // This is a fetch that is 2 bytes from the end of the
+            // page.  Grab just 2 bytes to see if we're lucky enough
+            // to have a compressed instruction.
+            opcode = state->readMemory<uint16_t>(inst_addr_);
+        }
 
-                if ((opcode & 0x3) == 0x3)
-                {
-                    // Go back to inst translate
-                    //throw ActionException(fetch_action_group_.getNextActionGroup());
-                }
-            }
-            else
-            {
-                // Load the second 2B of a possible 4B inst
-                opcode |= state->readMemory<uint16_t>(inst_addr_) << 16;
-            }
+        // Compression detection
+        if ((opcode & 0x3) != 0x3)
+        {
+            opcode = opcode & 0xFFFF;
+            opcode_size = 2;
+        }
+        else if (last_entry_) {
+            // Not lucky.  We have an opcode that is not compressed
+            // and crosses a page boundary.  Go back to inst translate
+            //throw ActionException(fetch_action_group_.getNextActionGroup());
         }
 
         ++(state->getSimState()->current_uid);
@@ -189,13 +182,6 @@ namespace atlas
         {
             THROW_ILLEGAL_INST;
         }
-
-        // If we only fetched 2B and found a valid compressed inst,
-        // then cancel the translation request for the second 2B
-        // if (page_crossing_access && (opcode_size == 2))
-        // {
-        //     state->getFetchTranslationState()->popRequest();
-        // }
 
         if (SPARTA_EXPECT_FALSE(inst->hasCsr()))
         {

@@ -30,8 +30,17 @@ namespace atlas
                                                                             ActionTags::TRANSLATION_PAGE_EXECUTE)),
             fetch_action_group_(fetch_action_group),
             execute_action_group_(execute_action_group),
+            default_block_(2048, InstExecute(&translated_page_group_, execute_action_group_)),
             translation_result_(translation_result)
         {
+            // Get the inst execute block at the end of the block.
+            // This instruction execute class represents a potential
+            // page crosser
+            auto & last_inst_exe = default_block_.back();
+
+            // Replace with a different instruction execution instance
+            last_inst_exe = InstExecute(&translated_page_group_,
+                                        execute_action_group_, true);
         }
 
         ActionGroup * getTranslatedPageActionGroup() { return &translated_page_group_; }
@@ -51,9 +60,11 @@ namespace atlas
             using base_type = InstExecute;
 
             InstExecute(ActionGroup * translated_page_group,
-                        ActionGroup * execute_page_group) :
+                        ActionGroup * execute_page_group,
+                        bool last_entry = false) :
                 translated_page_group_(translated_page_group),
-                execute_action_group_(execute_page_group)
+                execute_action_group_(execute_page_group),
+                last_entry_(last_entry)
             {
                 inst_setup_group_.addAction(
                     atlas::Action::createAction<&InstExecute::setupInst_>(this,
@@ -109,19 +120,18 @@ namespace atlas
             ActionGroup * inst_action_group_ = &inst_setup_group_;
             Addr inst_addr_ = 0;
             AtlasInstPtr inst_;
+            bool last_entry_ = false;
         };
 
-        // Eventually this vector will be populated with just pure
-        // instruction execution action groups
-        using InstExecuteBlock = std::vector<InstExecute>;
-        std::unordered_map<Addr, InstExecuteBlock> decode_block_;
         ActionGroup * fetch_action_group_ = nullptr;
         ActionGroup * execute_action_group_ = nullptr;
 
+        using InstExecuteBlock = std::vector<InstExecute>;
+        std::unordered_map<Addr, InstExecuteBlock> decode_block_;
+
         // To prevent a construction EVERY TIME the map is queried,
-        // cache a copyable block
-        const InstExecuteBlock default_block_{2048, InstExecute(&translated_page_group_,
-                                                                execute_action_group_)};
+        // cache a copy-able block
+        InstExecuteBlock default_block_;
 
         const AtlasTranslationState::TranslationResult translation_result_;
     };
