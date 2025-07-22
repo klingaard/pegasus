@@ -23,9 +23,13 @@ int main()
     auto execute_unit = state->getExecuteUnit();
     auto execute_action_group = execute_unit->getActionGroup();
 
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // Simple test -- for loop counter: one add + branch to add then stop
+
     // Create a simple translation page
-    constexpr atlas::Addr virt_page_address = 0x00000000C0000000;
-    constexpr atlas::Addr phys_page_address = 0x0000000080000000;
+    atlas::Addr virt_page_address = 0x00000000C0000000;
+    atlas::Addr phys_page_address = 0x0000000080000000;
     state->setPc(virt_page_address);
 
     // Write this program:
@@ -68,6 +72,37 @@ int main()
     } while (state->getPc() != 0x00000000c0000010ull);
 
     std::cout << "Executed: " << state->getSimState()->inst_count << std::endl;
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // Cross a 4M page with a 32-bit opcode that crosses a 4k page
+    // VA -> PA mapping:
+    //    0xFFFF_FFFF_FFFF_0040_0000 -> 0x0000_0000_0000_0840_0000
+
+    virt_page_address = 0xFFFFFFFFFFFF0000000ull | atlas::pageSize(atlas::Pagesize::SIZE_4M);
+    phys_page_address = 0x0000000000008000000ull | atlas::pageSize(atlas::Pagesize::SIZE_4M);
+    state->setPc(virt_page_address);
+
+    auto * tstate = state->getFetchTranslationState();
+    tstate->makeRequest(virt_page_address, 4);
+    tstate->setResult(virt_page_address, phys_page_address, 4, atlas::PageSize::SIZE_4M);
+
+    // Write the same program but shifted to cross a page:
+    // 0x0000000000008400ff2:
+    //     009890b7          	lui	ra,0x989
+    //     6800809b          	addiw	ra,ra,1664 # 989680 <main-0x7f676980>
+    //     4105              	li	sp,1
+    // 0x0000000000008400ffc <loop>:
+    //     0105               	addi	sp,sp,1
+    const auto page_edge = 0xff2
+    state->writeMemory(phys_page_address + page_edge,       0x009890b7u);
+    state->writeMemory(phys_page_address + page_edge + 0x4, 0x6800809bu);
+    state->writeMemory(phys_page_address + page_edge + 0x8, 0x41050105u); // li + addi
+
+    // Have the branch cross the page
+    // 0x0000000000008400ffe:
+    //     fe111fe3          	bne	sp,ra,8000000a <loop>
+    state->writeMemory(phys_page_address + page_edge + 0xc, 0xfe111fe3u);
+
 
     return 0;
 }

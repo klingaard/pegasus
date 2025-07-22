@@ -45,8 +45,16 @@ namespace atlas
     // opcode is on page 1 and the other half is one page 2.  This
     // only happens at the 4k address 0xffe.  At this point, the
     // instruction at 0xffe is either a valid 16-bit opcode (which
-    // nothing happens) or is invalid 16-bit and the next 16-bit are
-    // needed.
+    // nothing happens) or is invalid and the next 16-bit are needed
+    // to decode.
+    //
+    // The second half of the opcode can be on a totally different
+    // page.  The design here is to grab the first 16-bits and store
+    // them in the global opcode in AtlasState's SimState structure.
+    // Then, request a translation for the next page.  That next page
+    // will check for partial opcode construction and read 16-bits to
+    // build the complete opcode.  Then, the _second_ page will own
+    // and execute that instruction.
     //
     //
     Action::ItrType TranslatedPage::translatedPageExecute_(AtlasState* state,
@@ -135,22 +143,27 @@ namespace atlas
         //    non-compressed instruction.
         //
 
-        // Read opcode from memory
-        Opcode & opcode = state->getSimState()->current_opcode;
+        auto sim_state = state->getSimState();
+        bool & partial_opcode = sim_state->partial_opcode;
+
+        // Point to the current opcode in state
+        Opcode & opcode = sim_state->current_opcode;
 
         // Default size
         OpcodeSize opcode_size = 4;
 
-        if (false == last_entry_)
+        if (SPARTA_EXPECT_TRUE((false == last_entry_) || (false == partial_opcode)))
         {
             // Grab 4 bytes
             opcode = state->readMemory<uint32_t>(inst_addr_);
         }
         else {
             // This is a fetch that is 2 bytes from the end of the
-            // page.  Grab just 2 bytes to see if we're lucky enough
-            // to have a compressed instruction.
-            opcode = state->readMemory<uint16_t>(inst_addr_);
+            // page or we're trying to grab 2 bytes from the top of
+            // this page.  Grab just 2 bytes to see if we're lucky
+            // enough to have a compressed instruction or merge in the
+            // 2 bytes from this page.
+            opcode |= state->readMemory<uint16_t>(inst_addr_);
         }
 
         // Compression detection
@@ -159,11 +172,22 @@ namespace atlas
             opcode = opcode & 0xFFFF;
             opcode_size = 2;
         }
-        else if (last_entry_) {
+        else if (last_entry_)
+        {
             // Not lucky.  We have an opcode that is not compressed
-            // and crosses a page boundary.  Go back to inst translate
-            //throw ActionException(fetch_action_group_.getNextActionGroup());
+            // and crosses a page boundary. Go ahead and store the
+            // first 16 bits in the global opcode and go back to fetch
+            // to have the next translated page execute the
+            // instruction.
+            opcode <<= 16;
+            partial_opcode = true;
+
+            // Go back to inst translate
+            throw ActionException(translated_page_group_);
         }
+
+        // Clear state
+        partial_opcode = false;
 
         ++(state->getSimState()->current_uid);
 
@@ -177,6 +201,7 @@ namespace atlas
             // Set next PC, can be overidden by a branch/jump
             // instruction or an exception
             state->setNextPc(state->getPc() + opcode_size);
+
         }
         catch (const mavis::BaseException & e)
         {
