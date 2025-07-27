@@ -11,7 +11,7 @@ add_library(pegasuscore
     PegasusExtractor.cpp
     PegasusInst.cpp
     translate/Translate.cpp
-    translate/TranslatedPage.cpp
+    translate/ExecutionCache.cpp
     observers/Observer.cpp
     observers/CoSimObserver.cpp
     observers/InstructionLogger.cpp

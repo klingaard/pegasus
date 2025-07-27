@@ -1,4 +1,4 @@
-#include "TranslatedPage.hpp"
+#include "ExecutionCache.hpp"
 #include "core/PegasusState.hpp"
 
 namespace pegasus
@@ -57,7 +57,7 @@ namespace pegasus
     // and execute that instruction.
     //
     //
-    Action::ItrType TranslatedPage::translatedPageExecute_(PegasusState* state,
+    Action::ItrType ExecutionCache::translatedPageExecute_(PegasusState* state,
                                                            Action::ItrType action_it)
     {
         // Check to see if we're still on the same page
@@ -91,7 +91,7 @@ namespace pegasus
         return ++action_it;
     }
 
-    Action::ItrType TranslatedPage::InstExecute::setInst_(PegasusState* state, Action::ItrType action_it)
+    Action::ItrType ExecutionCache::InstExecute::setInst_(PegasusState* state, Action::ItrType action_it)
     {
         // Set the current instruction
         state->setCurrentInst(inst_);
@@ -103,7 +103,7 @@ namespace pegasus
     }
 
     // Need to decode the instruction at the offset
-    Action::ItrType TranslatedPage::InstExecute::setupInst_(PegasusState* state,
+    Action::ItrType ExecutionCache::InstExecute::setupInst_(PegasusState* state,
                                                             Action::ItrType action_it)
     {
         // Decode the instruction at the given PC (in PegasusState)
@@ -152,7 +152,7 @@ namespace pegasus
         // Default size
         OpcodeSize opcode_size = 4;
 
-        if (SPARTA_EXPECT_TRUE((false == last_entry_) || (false == partial_opcode)))
+        if (SPARTA_EXPECT_TRUE((false == last_entry_) || (true == partial_opcode)))
         {
             // Grab 4 bytes
             opcode = state->readMemory<uint32_t>(inst_addr_);

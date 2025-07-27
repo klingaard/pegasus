@@ -2,7 +2,7 @@
 #include "sim/PegasusSim.hpp"
 #include "core/PegasusState.hpp"
 #include "include/PegasusTypes.hpp"
-#include "core/translate/TranslatedPage.hpp"
+#include "core/translate/ExecutionCache.hpp"
 
 #include <cinttypes>
 
@@ -51,11 +51,11 @@ int main()
     tstate->makeRequest(virt_page_address, 4);
     tstate->setResult(virt_page_address, phys_page_address, 4, pegasus::PageSize::SIZE_4K);
 
-    pegasus::TranslatedPage translation_page(tstate->getResult(),
+    pegasus::ExecutionCache translation_page(tstate->getResult(),
                                              fetch_action_group,
                                              execute_action_group);
 
-    fetch_action_group->setNextActionGroup(translation_page.getTranslatedPageActionGroup());
+    fetch_action_group->setNextActionGroup(translation_page.getExecutionCacheActionGroup());
 
     pegasus::ActionGroup* next_action_group = fetch_unit->getFetchActionGroup();
     uint32_t break_out = 10000000;
@@ -80,10 +80,15 @@ int main()
 
     virt_page_address = 0xFFFFFFFFF0000000ull | pegasus::pageSize(pegasus::PageSize::SIZE_4M);
     phys_page_address = 0x0000000008000000ull | pegasus::pageSize(pegasus::PageSize::SIZE_4M);
-    state->setPc(virt_page_address);
 
     tstate->makeRequest(virt_page_address, 4);
     tstate->setResult(virt_page_address, phys_page_address, 4, pegasus::PageSize::SIZE_4M);
+
+    pegasus::ExecutionCache translation_page_split(tstate->getResult(),
+                                                   fetch_action_group,
+                                                   execute_action_group);
+
+    fetch_action_group->setNextActionGroup(translation_page_split.getExecutionCacheActionGroup());
 
     // Write the same program but shifted to cross a page:
     // 0x0000000000008400ff2:
@@ -97,6 +102,8 @@ int main()
     state->writeMemory(phys_page_address + page_edge,       0x009890b7u); // 0xf2 -> 0xf6
     state->writeMemory(phys_page_address + page_edge + 0x4, 0x6800809bu); // 0xf6 -> 0xfa
     state->writeMemory(phys_page_address + page_edge + 0x8, 0x41050105u); // 0xfa -> 0xfe, li + addi
+
+    state->setPc(virt_page_address + page_edge);
 
     // Have the branch cross the page
     // 0x0000000000008400ffe:

@@ -1,5 +1,5 @@
 #include "include/ActionTags.hpp"
-#include "core/translate/TranslatedPage.hpp"
+#include "core/translate/ExecutionCache.hpp"
 #include "core/ActionTagFactory.hpp"
 
 namespace pegasus

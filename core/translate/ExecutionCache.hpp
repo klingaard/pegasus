@@ -14,19 +14,19 @@ namespace pegasus
         extern const ActionTagType TRANSLATION_PAGE_EXECUTE;
     }
 
-    class TranslatedPage
+    class ExecutionCache
     {
     public:
 
-        using base_type = TranslatedPage;
+        using base_type = ExecutionCache;
 
-        TranslatedPage(const PegasusTranslationState::TranslationResult & translation_result,
+        ExecutionCache(const PegasusTranslationState::TranslationResult & translation_result,
                        ActionGroup * fetch_action_group,
                        ActionGroup * execute_action_group) :
-            translated_page_group_("TranslatedPageGroup",
+            translated_page_group_("ExecutionCacheGroup",
                                    pegasus::Action::createAction<
-                                   &TranslatedPage::translatedPageExecute_>(this,
-                                                                            "TranslatedPageExecute",
+                                   &ExecutionCache::translatedPageExecute_>(this,
+                                                                            "ExecutionCacheExecute",
                                                                             ActionTags::TRANSLATION_PAGE_EXECUTE)),
             fetch_action_group_(fetch_action_group),
             execute_action_group_(execute_action_group),
@@ -43,7 +43,7 @@ namespace pegasus
                                         execute_action_group_, true);
         }
 
-        ActionGroup * getTranslatedPageActionGroup() { return &translated_page_group_; }
+        ActionGroup * getExecutionCacheActionGroup() { return &translated_page_group_; }
 
     private:
         // Main entry for this translated page
@@ -68,34 +68,37 @@ namespace pegasus
             {
                 inst_setup_group_.addAction(
                     pegasus::Action::createAction<&InstExecute::setupInst_>(this,
-                                                                          "TranslatedPageSetupInst"));
+                                                                          "ExecutionCacheSetupInst"));
             }
 
             InstExecute(InstExecute&& orig) :
                 translated_page_group_(std::move(orig.translated_page_group_)),
-                execute_action_group_(std::move(orig.execute_action_group_))
+                execute_action_group_(std::move(orig.execute_action_group_)),
+                last_entry_(orig.last_entry_)
             {
                 inst_setup_group_.addAction(
                     pegasus::Action::createAction<&InstExecute::setupInst_>(this,
-                                                                          "TranslatedPageSetupInst"));
+                                                                          "ExecutionCacheSetupInst"));
             }
 
             InstExecute(const InstExecute & orig) :
                 translated_page_group_(orig.translated_page_group_),
-                execute_action_group_(orig.execute_action_group_)
+                execute_action_group_(orig.execute_action_group_),
+                last_entry_(orig.last_entry_)
             {
                 inst_setup_group_.addAction(
                     pegasus::Action::createAction<&InstExecute::setupInst_>(this,
-                                                                          "TranslatedPageSetupInst"));
+                                                                          "ExecutionCacheSetupInst"));
             }
 
             const InstExecute& operator=(const InstExecute & orig)
             {
                 translated_page_group_ = orig.translated_page_group_;
                 execute_action_group_ = orig.execute_action_group_;
+                last_entry_ = orig.last_entry_;
                 inst_setup_group_.addAction(
                     pegasus::Action::createAction<&InstExecute::setupInst_>(this,
-                                                                          "TranslatedPageSetupInst"));
+                                                                          "ExecutionCacheSetupInst"));
                 return *this;
             }
 
