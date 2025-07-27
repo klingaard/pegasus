@@ -1,7 +1,7 @@
 #include "TranslatedPage.hpp"
-#include "core/AtlasState.hpp"
+#include "core/PegasusState.hpp"
 
-namespace atlas
+namespace pegasus
 {
 
     //
@@ -50,14 +50,14 @@ namespace atlas
     //
     // The second half of the opcode can be on a totally different
     // page.  The design here is to grab the first 16-bits and store
-    // them in the global opcode in AtlasState's SimState structure.
+    // them in the global opcode in PegasusState's SimState structure.
     // Then, request a translation for the next page.  That next page
     // will check for partial opcode construction and read 16-bits to
     // build the complete opcode.  Then, the _second_ page will own
     // and execute that instruction.
     //
     //
-    Action::ItrType TranslatedPage::translatedPageExecute_(AtlasState* state,
+    Action::ItrType TranslatedPage::translatedPageExecute_(PegasusState* state,
                                                            Action::ItrType action_it)
     {
         // Check to see if we're still on the same page
@@ -91,7 +91,7 @@ namespace atlas
         return ++action_it;
     }
 
-    Action::ItrType TranslatedPage::InstExecute::setInst_(AtlasState* state, Action::ItrType action_it)
+    Action::ItrType TranslatedPage::InstExecute::setInst_(PegasusState* state, Action::ItrType action_it)
     {
         // Set the current instruction
         state->setCurrentInst(inst_);
@@ -103,10 +103,10 @@ namespace atlas
     }
 
     // Need to decode the instruction at the offset
-    Action::ItrType TranslatedPage::InstExecute::setupInst_(AtlasState* state,
+    Action::ItrType TranslatedPage::InstExecute::setupInst_(PegasusState* state,
                                                             Action::ItrType action_it)
     {
-        // Decode the instruction at the given PC (in AtlasState)
+        // Decode the instruction at the given PC (in PegasusState)
 
         // When compressed instructions are enabled, it is possible
         // for a full sized instruction (32 bits) to cross a 4K page
@@ -192,7 +192,7 @@ namespace atlas
         ++(state->getSimState()->current_uid);
 
         // Decode instruction with Mavis
-        AtlasInstPtr inst = nullptr;
+        PegasusInstPtr inst = nullptr;
         try
         {
             inst = state->getMavis()->makeInst(opcode, state);
@@ -233,7 +233,7 @@ namespace atlas
         // setup
         inst_action_group_ = execute_action_group_->execute(state);
 
-        // Before the instruction's execution AtlasState needs to be
+        // Before the instruction's execution PegasusState needs to be
         // set to the captured instruction.
         inst_action_group_->insertActionFront(inst_set_inst_);
 

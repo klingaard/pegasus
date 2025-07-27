@@ -4,6 +4,6 @@ file (CREATE_LINK ${PROJECT_SOURCE_DIR}/../../arch                     ${CMAKE_C
 file (CREATE_LINK ${PROJECT_SOURCE_DIR}/../../mavis/json               ${CMAKE_CURRENT_BINARY_DIR}/mavis_json SYMBOLIC)
 
 add_executable(BlockExecute_test BlockExecute_test.cpp)
-target_link_libraries(BlockExecute_test atlassim atlascore atlasinsts softfloat atlassys ${ATLAS_LIBS})
+target_link_libraries(BlockExecute_test pegasussim pegasuscore pegasusinsts softfloat pegasussys ${PEGASUS_LIBS})
 
-atlas_named_test(BlockExecute_test_run BlockExecute_test)
+pegasus_named_test(BlockExecute_test_run BlockExecute_test)

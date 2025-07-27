@@ -5,9 +5,9 @@
 #include <map>
 
 #include "core/ActionGroup.hpp"
-#include "core/AtlasInst.hpp"
+#include "core/PegasusInst.hpp"
 
-namespace atlas
+namespace pegasus
 {
     namespace ActionTags
     {
@@ -20,11 +20,11 @@ namespace atlas
 
         using base_type = TranslatedPage;
 
-        TranslatedPage(const AtlasTranslationState::TranslationResult & translation_result,
+        TranslatedPage(const PegasusTranslationState::TranslationResult & translation_result,
                        ActionGroup * fetch_action_group,
                        ActionGroup * execute_action_group) :
             translated_page_group_("TranslatedPageGroup",
-                                   atlas::Action::createAction<
+                                   pegasus::Action::createAction<
                                    &TranslatedPage::translatedPageExecute_>(this,
                                                                             "TranslatedPageExecute",
                                                                             ActionTags::TRANSLATION_PAGE_EXECUTE)),
@@ -48,7 +48,7 @@ namespace atlas
     private:
         // Main entry for this translated page
         ActionGroup translated_page_group_;
-        Action::ItrType translatedPageExecute_(AtlasState* state,
+        Action::ItrType translatedPageExecute_(PegasusState* state,
                                                Action::ItrType action_it);
 
         ////////////////////////////////////////////////////////////////////////////////
@@ -67,7 +67,7 @@ namespace atlas
                 last_entry_(last_entry)
             {
                 inst_setup_group_.addAction(
-                    atlas::Action::createAction<&InstExecute::setupInst_>(this,
+                    pegasus::Action::createAction<&InstExecute::setupInst_>(this,
                                                                           "TranslatedPageSetupInst"));
             }
 
@@ -76,7 +76,7 @@ namespace atlas
                 execute_action_group_(std::move(orig.execute_action_group_))
             {
                 inst_setup_group_.addAction(
-                    atlas::Action::createAction<&InstExecute::setupInst_>(this,
+                    pegasus::Action::createAction<&InstExecute::setupInst_>(this,
                                                                           "TranslatedPageSetupInst"));
             }
 
@@ -85,7 +85,7 @@ namespace atlas
                 execute_action_group_(orig.execute_action_group_)
             {
                 inst_setup_group_.addAction(
-                    atlas::Action::createAction<&InstExecute::setupInst_>(this,
+                    pegasus::Action::createAction<&InstExecute::setupInst_>(this,
                                                                           "TranslatedPageSetupInst"));
             }
 
@@ -94,7 +94,7 @@ namespace atlas
                 translated_page_group_ = orig.translated_page_group_;
                 execute_action_group_ = orig.execute_action_group_;
                 inst_setup_group_.addAction(
-                    atlas::Action::createAction<&InstExecute::setupInst_>(this,
+                    pegasus::Action::createAction<&InstExecute::setupInst_>(this,
                                                                           "TranslatedPageSetupInst"));
                 return *this;
             }
@@ -106,12 +106,12 @@ namespace atlas
         private:
 
             // Need to decode the instruction at the offset
-            Action::ItrType setupInst_(AtlasState* state,
+            Action::ItrType setupInst_(PegasusState* state,
                                        Action::ItrType action_it);
 
-            // Set the inst pointer in AtlasState when the instruction
+            // Set the inst pointer in PegasusState when the instruction
             // is to be executed again
-            Action::ItrType setInst_(AtlasState* state, Action::ItrType action_it);
+            Action::ItrType setInst_(PegasusState* state, Action::ItrType action_it);
 
             ActionGroup * translated_page_group_ = nullptr;
             ActionGroup   inst_setup_group_{"InstSetupGroup"};
@@ -119,7 +119,7 @@ namespace atlas
             ActionGroup * execute_action_group_ = nullptr;
             ActionGroup * inst_action_group_ = &inst_setup_group_;
             Addr inst_addr_ = 0;
-            AtlasInstPtr inst_;
+            PegasusInstPtr inst_;
             bool last_entry_ = false;
         };
 
@@ -133,6 +133,6 @@ namespace atlas
         // cache a copy-able block
         InstExecuteBlock default_block_;
 
-        const AtlasTranslationState::TranslationResult translation_result_;
+        const PegasusTranslationState::TranslationResult translation_result_;
     };
 }

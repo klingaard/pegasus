@@ -1,8 +1,8 @@
 #pragma once
 
-#include "include/AtlasTypes.hpp"
+#include "include/PegasusTypes.hpp"
 
-namespace atlas
+namespace pegasus
 {
     namespace ActionTags
     {
@@ -18,4 +18,4 @@ namespace atlas
         // Stop Simulation
         extern const ActionTagType STOP_SIM_TAG;
     };
-} // namespace atlas
+} // namespace pegasus

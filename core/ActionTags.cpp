@@ -2,7 +2,7 @@
 #include "core/translate/TranslatedPage.hpp"
 #include "core/ActionTagFactory.hpp"
 
-namespace atlas
+namespace pegasus
 {
     // Core Actions
     const ActionTagType ActionTags::FETCH_TAG = ActionTagFactory::createTag("FETCH");
@@ -19,4 +19,4 @@ namespace atlas
 
     // Stop Simulation
     const ActionTagType ActionTags::STOP_SIM_TAG = ActionTagFactory::createTag("STOP_SIM");
-} // namespace atlas
+} // namespace pegasus
