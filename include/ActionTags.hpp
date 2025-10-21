@@ -4,19 +4,19 @@
 
 namespace pegasus
 {
-    class ActionTags
+    namespace ActionTags
     {
-      public:
         // Core Actions
-        static const ActionTagType FETCH_TAG;
-        static const ActionTagType INST_TRANSLATE_TAG;
-        static const ActionTagType DECODE_TAG;
-        static const ActionTagType EXECUTE_TAG;
-        static const ActionTagType COMPUTE_ADDR_TAG;
-        static const ActionTagType DATA_TRANSLATE_TAG;
-        static const ActionTagType EXCEPTION_TAG;
+        extern const ActionTagType FETCH_TAG;
+        extern const ActionTagType INST_TRANSLATE_TAG;
+        extern const ActionTagType DECODE_TAG;
+        extern const ActionTagType EXECUTE_TAG;
+        extern const ActionTagType COMPUTE_ADDR_TAG;
+        extern const ActionTagType DATA_TRANSLATE_TAG;
+        extern const ActionTagType TRANSLATION_PAGE_EXECUTE;
+        extern const ActionTagType EXCEPTION_TAG;
 
         // Stop Simulation
-        static const ActionTagType STOP_SIM_TAG;
+        extern const ActionTagType STOP_SIM_TAG;
     };
 } // namespace pegasus
