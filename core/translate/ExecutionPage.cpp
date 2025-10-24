@@ -1,5 +1,6 @@
 #include "ExecutionPage.hpp"
 #include "core/PegasusState.hpp"
+#include "core/PegasusCore.hpp"
 
 namespace pegasus
 {
@@ -106,7 +107,7 @@ namespace pegasus
 
     // Need to decode the instruction at the offset
     Action::ItrType ExecutionPage::InstExecute::setupInst_(PegasusState* state,
-                                                            Action::ItrType action_it)
+                                                           Action::ItrType action_it)
     {
         // Decode the instruction at the given PC (in PegasusState)
 
@@ -198,7 +199,7 @@ namespace pegasus
         PegasusInstPtr inst = nullptr;
         try
         {
-            inst = state->getMavis()->makeInst(opcode, state);
+            inst = state->getCore()->getMavis()->makeInst(opcode, state);
             //assert(state->getCurrentInst() == nullptr);
             state->setCurrentInst(inst);
             // Set next PC, can be overidden by a branch/jump

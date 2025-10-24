@@ -2,7 +2,7 @@
 #include "core/inst_handlers/zicsr/RvzicsrInsts.hpp"
 #include "include/ActionTags.hpp"
 #include "core/ActionGroup.hpp"
-#include "core/PegasusState.hpp"
+#include "core/PegasusCore.hpp"
 #include "core/PegasusInst.hpp"
 #include "core/Exception.hpp"
 #include "core/Trap.hpp"
@@ -15,7 +15,7 @@ extern "C"
 namespace pegasus
 {
     template <typename XLEN>
-    void RvzicsrInsts::getInstHandlers(Execute::InstHandlersMap & inst_handlers)
+    void RvzicsrInsts::getInstHandlers(InstHandlers::InstHandlersMap & inst_handlers)
     {
         static_assert(std::is_same_v<XLEN, RV64> || std::is_same_v<XLEN, RV32>);
         inst_handlers.emplace(
@@ -44,11 +44,11 @@ namespace pegasus
                 nullptr, "csrrwi", ActionTags::EXECUTE_TAG));
     }
 
-    template void RvzicsrInsts::getInstHandlers<RV32>(Execute::InstHandlersMap &);
-    template void RvzicsrInsts::getInstHandlers<RV64>(Execute::InstHandlersMap &);
+    template void RvzicsrInsts::getInstHandlers<RV32>(InstHandlers::InstHandlersMap &);
+    template void RvzicsrInsts::getInstHandlers<RV64>(InstHandlers::InstHandlersMap &);
 
     template <typename XLEN>
-    void RvzicsrInsts::getCsrUpdateActions(Execute::CsrUpdateActionsMap & csrUpdate_actions)
+    void RvzicsrInsts::getCsrUpdateActions(InstHandlers::CsrUpdateActionsMap & csrUpdate_actions)
     {
         static_assert(std::is_same_v<XLEN, RV64> || std::is_same_v<XLEN, RV32>);
 
@@ -89,22 +89,8 @@ namespace pegasus
                 nullptr, "misaUpdate"));
     }
 
-    template void RvzicsrInsts::getCsrUpdateActions<RV32>(Execute::CsrUpdateActionsMap &);
-    template void RvzicsrInsts::getCsrUpdateActions<RV64>(Execute::CsrUpdateActionsMap &);
-
-    template <RvzicsrInsts::AccessType TYPE>
-    bool RvzicsrInsts::isAccessLegal_(const uint32_t csr_num, const PrivMode priv_mode)
-    {
-        // From RISC-V spec:
-        // The upper 4 bits of the CSR address (csr[11:8]) are used to encode the read and write
-        // accessibility of the CSRs according to privilege level. The top two bits (csr[11:10])
-        // indicate whether the register is read/write (00,01, or 10) or read-only (11). The next
-        // two bits (csr[9:8]) encode the lowest privilege level that can access the CSR.
-        const bool is_writable = (csr_num & 0xc00) != 0xc00;
-        const PrivMode lowest_priv_level = (PrivMode)((csr_num & 0x300) >> 8);
-
-        return ((TYPE == AccessType::READ) || is_writable) && (priv_mode >= lowest_priv_level);
-    }
+    template void RvzicsrInsts::getCsrUpdateActions<RV32>(InstHandlers::CsrUpdateActionsMap &);
+    template void RvzicsrInsts::getCsrUpdateActions<RV64>(InstHandlers::CsrUpdateActionsMap &);
 
     template <typename XLEN>
     Action::ItrType RvzicsrInsts::csrrcHandler_(pegasus::PegasusState* state,
@@ -116,7 +102,7 @@ namespace pegasus
         auto rd = inst->getRd();
         const uint32_t csr = inst->getCsr();
 
-        if (!isAccessLegal_<AccessType::READ>(csr, state->getPrivMode()))
+        if (!isAccessLegal_<RvCsrAccess::AccessType::READ>(csr, state->getPrivMode()))
         {
             THROW_ILLEGAL_INST;
         }
@@ -125,7 +111,7 @@ namespace pegasus
         // Don't write CSR is rs1=x0
         if (rs1 != 0)
         {
-            if (!isAccessLegal_<AccessType::WRITE>(csr, state->getPrivMode()))
+            if (!isAccessLegal_<RvCsrAccess::AccessType::WRITE>(csr, state->getPrivMode()))
             {
                 THROW_ILLEGAL_INST;
             }
@@ -149,7 +135,7 @@ namespace pegasus
         const auto rd = inst->getRd();
         const int csr = inst->getCsr();
 
-        if (!isAccessLegal_<AccessType::READ>(csr, state->getPrivMode()))
+        if (!isAccessLegal_<RvCsrAccess::AccessType::READ>(csr, state->getPrivMode()))
         {
             THROW_ILLEGAL_INST;
         }
@@ -157,7 +143,7 @@ namespace pegasus
         const XLEN csr_val = READ_CSR_REG<XLEN>(state, csr);
         if (imm)
         {
-            if (!isAccessLegal_<AccessType::WRITE>(csr, state->getPrivMode()))
+            if (!isAccessLegal_<RvCsrAccess::AccessType::WRITE>(csr, state->getPrivMode()))
             {
                 THROW_ILLEGAL_INST;
             }
@@ -179,7 +165,7 @@ namespace pegasus
         const auto rd = inst->getRd();
         const int csr = inst->getCsr();
 
-        if (!isAccessLegal_<AccessType::READ>(csr, state->getPrivMode()))
+        if (!isAccessLegal_<RvCsrAccess::AccessType::READ>(csr, state->getPrivMode()))
         {
             THROW_ILLEGAL_INST;
         }
@@ -187,7 +173,7 @@ namespace pegasus
         const XLEN csr_val = READ_CSR_REG<XLEN>(state, csr);
         if (rs1 != 0)
         {
-            if (!isAccessLegal_<AccessType::WRITE>(csr, state->getPrivMode()))
+            if (!isAccessLegal_<RvCsrAccess::AccessType::WRITE>(csr, state->getPrivMode()))
             {
                 THROW_ILLEGAL_INST;
             }
@@ -211,7 +197,7 @@ namespace pegasus
         const auto rd = inst->getRd();
         const int csr = inst->getCsr();
 
-        if (!isAccessLegal_<AccessType::READ>(csr, state->getPrivMode()))
+        if (!isAccessLegal_<RvCsrAccess::AccessType::READ>(csr, state->getPrivMode()))
         {
             THROW_ILLEGAL_INST;
         }
@@ -219,7 +205,7 @@ namespace pegasus
         const XLEN csr_val = READ_CSR_REG<XLEN>(state, csr);
         if (imm)
         {
-            if (!isAccessLegal_<AccessType::WRITE>(csr, state->getPrivMode()))
+            if (!isAccessLegal_<RvCsrAccess::AccessType::WRITE>(csr, state->getPrivMode()))
             {
                 THROW_ILLEGAL_INST;
             }
@@ -244,7 +230,7 @@ namespace pegasus
 
         const XLEN rs1_val = READ_INT_REG<XLEN>(state, rs1);
 
-        if (!isAccessLegal_<AccessType::WRITE>(csr, state->getPrivMode()))
+        if (!isAccessLegal_<RvCsrAccess::AccessType::WRITE>(csr, state->getPrivMode()))
         {
             THROW_ILLEGAL_INST;
         }
@@ -252,7 +238,7 @@ namespace pegasus
         // Only read CSR if rd!=x0
         if (rd != 0)
         {
-            if (!isAccessLegal_<AccessType::READ>(csr, state->getPrivMode()))
+            if (!isAccessLegal_<RvCsrAccess::AccessType::READ>(csr, state->getPrivMode()))
             {
                 THROW_ILLEGAL_INST;
             }
@@ -275,7 +261,7 @@ namespace pegasus
         const auto rd = inst->getRd();
         const int csr = inst->getCsr();
 
-        if (!isAccessLegal_<AccessType::WRITE>(csr, state->getPrivMode()))
+        if (!isAccessLegal_<RvCsrAccess::AccessType::WRITE>(csr, state->getPrivMode()))
         {
             THROW_ILLEGAL_INST;
         }
@@ -283,7 +269,7 @@ namespace pegasus
         // Only read CSR if rd!=x0
         if (rd != 0)
         {
-            if (!isAccessLegal_<AccessType::READ>(csr, state->getPrivMode()))
+            if (!isAccessLegal_<RvCsrAccess::AccessType::READ>(csr, state->getPrivMode()))
             {
                 THROW_ILLEGAL_INST;
             }
@@ -430,7 +416,7 @@ namespace pegasus
         const XLEN mstatus_val = READ_CSR_REG<XLEN>(state, MSTATUS);
         WRITE_CSR_REG<XLEN>(state, SSTATUS, mstatus_val);
 
-        auto & ext_manager = state->getExtensionManager();
+        auto & ext_manager = state->getCore()->getExtensionManager();
         // If FS is set to 0 (off), all floating point extensions are disabled
         const uint32_t fs_val = READ_CSR_FIELD<XLEN>(state, MSTATUS, "fs");
         if (fs_val == 0)
@@ -449,7 +435,7 @@ namespace pegasus
             }
         }
 
-        state->changeMavisContext();
+        state->getCore()->changeMavisContext();
         state->changeMMUMode<XLEN>();
 
         return ++action_it;
@@ -460,7 +446,7 @@ namespace pegasus
                                                      Action::ItrType action_it)
     {
         const XLEN misa_val = READ_CSR_REG<XLEN>(state, MISA);
-        auto & ext_manager = state->getExtensionManager();
+        auto & ext_manager = state->getCore()->getExtensionManager();
 
         std::vector<std::string> exts_to_enable;
         std::vector<std::string> exts_to_disable;
@@ -497,7 +483,7 @@ namespace pegasus
 
         ext_manager.disableExtensions(exts_to_disable);
         ext_manager.enableExtensions(exts_to_enable);
-        state->changeMavisContext();
+        state->getCore()->changeMavisContext();
 
         return ++action_it;
     }

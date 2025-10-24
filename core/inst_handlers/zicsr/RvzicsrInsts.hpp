@@ -1,30 +1,23 @@
 #pragma once
 
-#include "core/Execute.hpp"
+#include "core/InstHandlers.hpp"
+#include "core/inst_handlers/zicsr/RvcsrAccess.hpp"
 
 namespace pegasus
 {
     class PegasusState;
 
-    class RvzicsrInsts
+    class RvzicsrInsts : public RvCsrAccess
     {
       public:
         using base_type = RvzicsrInsts;
 
-        template <typename XLEN> static void getInstHandlers(Execute::InstHandlersMap &);
+        template <typename XLEN> static void getInstHandlers(InstHandlers::InstHandlersMap &);
 
-        template <typename XLEN> static void getCsrUpdateActions(Execute::CsrUpdateActionsMap &);
+        template <typename XLEN>
+        static void getCsrUpdateActions(InstHandlers::CsrUpdateActionsMap &);
 
       private:
-        enum AccessType
-        {
-            WRITE,
-            READ
-        };
-
-        template <AccessType TYPE>
-        bool isAccessLegal_(const uint32_t csr_num, const PrivMode priv_mode);
-
         template <typename XLEN>
         Action::ItrType csrrcHandler_(pegasus::PegasusState* state, Action::ItrType action_it);
         template <typename XLEN>
