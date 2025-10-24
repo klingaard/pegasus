@@ -4,6 +4,8 @@
 #include <array>
 #include <map>
 
+#include "include/PegasusTypes.hpp"
+
 namespace pegasus::translate_types
 {
     struct FieldDef
@@ -224,6 +226,27 @@ namespace pegasus::translate_types
         }
     }
 
+    inline uint64_t getPageMask(const PageSize pg_size)
+    {
+        static const std::vector<uint64_t> pagesize_to_mask = {0x1000,           // '4k'
+                                                               0x200000,         // '2MB'
+                                                               0x40000000,       // '1GB'
+                                                               0x8000000000,     // '512GB'
+                                                               0x1000000000000}; // '256TB'
+        // For the future...
+        // (0x2000,       // '8k'),
+        // (0x4000,       // '16k'),
+        // (0x8000,       // '32k'),
+        // (0x10000,      // '64k'),
+        // (0x20000,      // '128k'),
+        // (0x40000,      // '256k'),
+        // (0x80000,      // '512k'),
+        // (0x100000,     // '1MB'),
+        // (0x400000,     // '4MB')
+
+        return pagesize_to_mask.at(static_cast<uint32_t>(pg_size));
+    }
+
     template <MMUMode MODE> inline PageSize getPageSize(const uint32_t level)
     {
         static const std::map<uint32_t, PageSize> level_to_pagesize = {{1, PageSize::SIZE_4K},
@@ -231,20 +254,12 @@ namespace pegasus::translate_types
                                                                        {3, PageSize::SIZE_1G},
                                                                        {4, PageSize::SIZE_512G},
                                                                        {5, PageSize::SIZE_256T}};
-
-        if constexpr (MODE == MMUMode::BAREMETAL)
-        {
-            return PageSize::INVALID;
-        }
-        else if constexpr (MODE == MMUMode::SV32)
+        if constexpr (MODE == MMUMode::SV32)
         {
             sparta_assert(level <= translate_types::Sv32::num_pagewalk_levels);
             return (level == 2) ? PageSize::SIZE_4M : PageSize::SIZE_4K;
         }
-        else
-        {
-            return level_to_pagesize.at(level);
-        }
+        return level_to_pagesize.at(level);
     }
 
     template <MMUMode MODE> inline auto getVpnField(const uint32_t level)

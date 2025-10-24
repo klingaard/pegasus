@@ -25,7 +25,7 @@ namespace pegasus
 
         Fetch(sparta::TreeNode* fetch_node, const FetchParameters* p);
 
-        ActionGroup* getActionGroup() { return &fetch_action_group_; }
+        ActionGroup* getFetchActionGroup() { return &fetch_action_group_; }
 
       private:
         PegasusState* state_ = nullptr;

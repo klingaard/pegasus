@@ -2,6 +2,7 @@
 
 #include "core/ActionGroup.hpp"
 #include "core/translate/TranslateTypes.hpp"
+#include "core/translate/ExecutionCache.hpp"
 #include "include/PegasusTypes.hpp"
 
 #include "sparta/simulation/ParameterSet.hpp"
@@ -76,5 +77,8 @@ namespace pegasus
         }
 
         friend class ::PegasusTranslateTester;
+
+        // Execution Cache
+        std::unordered_map<uint64_t, ExecutionCache> execution_page_cache_;
     };
 } // namespace pegasus

@@ -212,7 +212,7 @@ namespace pegasus
         }
 
         // Connect finish ActionGroup to Fetch
-        finish_action_group_.setNextActionGroup(fetch_unit_->getActionGroup());
+        finish_action_group_.setNextActionGroup(fetch_unit_->getFetchActionGroup());
     }
 
     void PegasusState::onBindTreeLate_()

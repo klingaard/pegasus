@@ -13,6 +13,7 @@ add_library(pegasuscore
     PegasusInst.cpp
     VecConfig.cpp
     translate/Translate.cpp
+    translate/ExecutionPage.cpp
     observers/Observer.cpp
     observers/InstructionLogger.cpp
     observers/SimController.cpp

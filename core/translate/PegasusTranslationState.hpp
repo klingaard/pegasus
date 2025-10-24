@@ -74,6 +74,10 @@ namespace pegasus
 
             bool isValid() const { return size_ != 0; }
 
+            bool isContained(Addr vaddr) const {
+
+            }
+
           private:
             Addr vaddr_ = 0;
             Addr paddr_ = 0;
