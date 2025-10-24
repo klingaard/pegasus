@@ -33,7 +33,7 @@ class PegasusInstructionTester
         state_->setPc(pc);
 
         // Fetch and Execute instruction
-        pegasus::ActionGroup* next_action_group = fetch_unit_->getActionGroup();
+        pegasus::ActionGroup* next_action_group = fetch_unit_->getFetchActionGroup();
         do
         {
             std::cout << "next_action_group: " << next_action_group << std::endl;

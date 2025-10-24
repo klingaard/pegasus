@@ -159,6 +159,7 @@ namespace pegasus
         struct SimState
         {
             uint32_t current_opcode = 0;
+            bool partial_opcode = false;
             uint64_t current_uid = 0;
             PegasusInstPtr current_inst = nullptr;
             uint64_t inst_count = 0;

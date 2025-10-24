@@ -205,6 +205,9 @@ namespace pegasus
             // instruction or an exception
             state->setNextPc(state->getPc() + opcode_size);
 
+            inst->updateVecConfig(state); // Old PegasusInst may be returned from cache. So
+                                          // outside-constructor call is needed.
+
         }
         catch (const mavis::BaseException & e)
         {
