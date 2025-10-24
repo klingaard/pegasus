@@ -63,7 +63,7 @@ namespace pegasus
                    != supported_exts.end();
         };
 
-        for (const auto & ext : extension_manager_.getEnabledExtensions())
+        for (const auto & ext : extension_manager_.getEnabledExtensions(false))
         {
             if (!hasExtension(ext.first))
             {
