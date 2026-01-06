@@ -1,18 +1,22 @@
+#include "sim/PegasusSimParameters.hpp"
 #include "system/PegasusSystem.hpp"
-
+#include "core/observers/Observer.hpp"
 #include "sparta/memory/SimpleMemoryMapNode.hpp"
 #include "sparta/memory/MemoryObject.hpp"
+#include "sparta/utils/LogUtils.hpp"
 
 namespace pegasus
 {
-
     PegasusSystem::PegasusSystem(sparta::TreeNode* sys_node, const PegasusSystemParameters* p) :
         sparta::Unit(sys_node),
-        workload_and_args_(p->workload_and_args)
+        workloads_and_args_(
+            PegasusSimParameters::getParameter<PegasusSimParameters::WorkloadsAndArgs>(sys_node,
+                                                                                       "workloads"))
     {
-        if (false == workload_and_args_.empty())
+        if (false == workloads_and_args_.empty())
         {
-            loadWorkload_(workload_and_args_[0]);
+            // Get first workload
+            loadWorkload_(workloads_and_args_.at(0).at(0));
         }
 
         if (p->enable_uart)
@@ -103,15 +107,31 @@ namespace pegasus
                     }
                     else if (name == "pass")
                     {
-                        sparta_assert(pass_addr_.isValid() == false,
-                                      "Found multiple pass symbols in ELF!");
-                        pass_addr_ = addr;
+                        if (pass_addr_.isValid())
+                        {
+                            std::cout << "WARNING: Found multiple pass symbols in ELF!\n\tFirst "
+                                         "one (stashed): "
+                                      << HEX16(pass_addr_) << "\n\tSecond one: " << HEX16(addr)
+                                      << std::endl;
+                        }
+                        else
+                        {
+                            pass_addr_ = addr;
+                        }
                     }
                     else if (name == "fail")
                     {
-                        sparta_assert(fail_addr_.isValid() == false,
-                                      "Found multiple fail symbols in ELF!");
-                        fail_addr_ = addr;
+                        if (fail_addr_.isValid())
+                        {
+                            std::cout
+                                << "Found multiple fail symbols in ELF!\n\tFirst one (stashed): "
+                                << HEX16(fail_addr_) << "\n\tSecond one: " << HEX16(addr)
+                                << std::endl;
+                        }
+                        else
+                        {
+                            fail_addr_ = addr;
+                        }
                     }
                 }
             }
@@ -303,6 +323,19 @@ namespace pegasus
         memory_map_->addMapping(addr_block_start, PEGASUS_SYSTEM_TOTAL_MEMORY, memory_if,
                                 0x0 /* Additional offset */);
         memory_map_->dumpMappings(std::cout);
+    }
+
+    void PegasusSystem::registerMemoryCallbacks(Observer* observer)
+    {
+        observer->registerReadWriteMemCallbacks(getSystemMemory());
+        using BMOIfNode = sparta::memory::BlockingMemoryIFNode;
+        for (const auto & n : tree_nodes_)
+        {
+            if (auto bm_if_node = dynamic_cast<BMOIfNode*>(n.get()))
+            {
+                observer->registerReadWriteMemCallbacks(bm_if_node);
+            }
+        }
     }
 
     void PegasusSystem::enableEOTPassFailMode()

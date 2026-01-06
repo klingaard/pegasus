@@ -35,7 +35,5 @@ namespace pegasus
         Action::ItrType fetch_(pegasus::PegasusState* state, Action::ItrType action_it);
 
         ActionGroup fetch_action_group_{"Fetch"};
-
-        void advanceSim_();
     };
 } // namespace pegasus

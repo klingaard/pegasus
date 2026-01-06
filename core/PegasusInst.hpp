@@ -125,6 +125,36 @@ namespace pegasus
             return opcode_info_->getSpecialField(mavis::OpcodeInfo::SpecialField::VM);
         }
 
+        bool isVectorInstMasked() const
+        {
+            try
+            {
+                // In RISC-V V-extension:
+                //   VM = 0 → masked operation (uses v0.t)
+                //   VM = 1 → unmasked operation (ignores v0)
+                //
+                // getVM() returns the decoded VM bit.
+                // If the instruction does NOT have a VM field (e.g., scalar op),
+                // MAVIS throws UnsupportedExtractorSpecialFieldID.
+                //
+                // So if we successfully read VM:
+                //   return true  → masked instruction
+                //   return false → unmasked instruction
+                return getVM() == 0;
+            }
+            catch (const mavis::UnsupportedExtractorSpecialFieldID &)
+            {
+                // Some instructions simply do not define VM at all.
+                // For those, MAVIS throws an exception.
+                //
+                // If VM does not exist:
+                //   → Instruction is NOT a masked vector instruction.
+                //
+                // Therefore return false.
+                return false;
+            }
+        }
+
         uint64_t getStackAdjustment() const
         {
             return opcode_info_->getSpecialField(mavis::OpcodeInfo::SpecialField::STACK_ADJ);
@@ -183,6 +213,13 @@ namespace pegasus
         // Translation information.  Specifically, this is for data
         // accesses
         PegasusTranslationState* getTranslationState() { return &translation_state_; }
+
+        template <bool IS_UNIT_TEST = false> bool compare(const PegasusInst* inst) const;
+
+        template <bool IS_UNIT_TEST = false> bool compare(const PegasusInst::PtrType & inst) const
+        {
+            return compare<IS_UNIT_TEST>(inst.get());
+        }
 
       private:
         // Unique ID

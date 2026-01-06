@@ -15,9 +15,10 @@ class PegasusTranslateTester
     PegasusTranslateTester()
     {
         // Create the simulator
-        const uint64_t ilimit = 0;
-        pegasus_sim_.reset(new pegasus::PegasusSim(&scheduler_, {}, {}, ilimit));
+        pegasus_sim_.reset(new pegasus::PegasusSim(&scheduler_));
 
+        sparta::app::SimulationConfiguration config;
+        pegasus_sim_->configure(0, nullptr, &config);
         pegasus_sim_->buildTree();
         pegasus_sim_->configureTree();
         pegasus_sim_->finalizeTree();
@@ -399,7 +400,7 @@ class PegasusTranslateTester
         std::cout << std::endl;
 
         // Set SATP value
-        state_->getCsrRegister(pegasus::CSR::SATP::reg_num)->dmiWrite<uint64_t>(satp_ppn);
+        state_->getCsrRegister(pegasus::CSR_64::SATP::reg_num)->dmiWrite<uint64_t>(satp_ppn);
 
         // Write PTEs to memory
         state_->writeMemory<uint32_t>(lvl1_paddr, lvl1_pte.getPte());

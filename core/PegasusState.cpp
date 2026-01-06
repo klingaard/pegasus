@@ -19,35 +19,71 @@
 #include "sparta/simulation/ResourceTreeNode.hpp"
 #include "sparta/memory/SimpleMemoryMapNode.hpp"
 #include "sparta/utils/LogUtils.hpp"
+#include "sparta/utils/SpartaTester.hpp"
 
 #include <algorithm>
 
 namespace pegasus
 {
+    uint64_t getInstLimit(sparta::TreeNode* rtn, uint64_t ilimit)
+    {
+        auto extension = sparta::notNull(rtn->getExtension("sim"));
+        const uint64_t sim_ilimit =
+            extension->getParameters()->getParameter("inst_limit")->getValueAs<uint64_t>();
+        // Hart ilimit overrides the sim ilimit
+        return (ilimit == 0) ? sim_ilimit : ilimit;
+    }
+
+    PrivMode getPrivilegeMode(const char priv)
+    {
+        if (priv == 'm')
+        {
+            return PrivMode::MACHINE;
+        }
+        else if (priv == 's')
+        {
+            return PrivMode::SUPERVISOR;
+        }
+        else if (priv == 'u')
+        {
+            return PrivMode::USER;
+        }
+        else
+        {
+            sparta_assert(false, "Unsupported privilege mode: " << priv);
+        }
+    }
+
     PegasusState::PegasusState(sparta::TreeNode* hart_tn, const PegasusStateParameters* p) :
         sparta::Unit(hart_tn),
         hart_id_(p->hart_id),
         vlen_(p->vlen),
         xlen_(p->xlen),
-        csr_values_json_(p->csr_values),
-        ilimit_(p->ilimit),
+        reg_json_file_path_(p->reg_json_file_path),
+        ilimit_(getInstLimit(hart_tn->getRoot(), p->ilimit)),
+        quantum_(p->quantum),
         stop_sim_on_wfi_(p->stop_sim_on_wfi),
         stf_filename_(p->stf_filename),
         validation_stf_filename_(p->validate_with_stf),
+        validate_trace_begin_(p->validate_trace_begin),
+        validate_inst_begin_(p->validate_inst_begin),
+        ulimit_stack_size_(p->ulimit_stack_size),
+        priv_mode_(getPrivilegeMode(p->priv_mode)),
         inst_logger_(hart_tn, "inst", "Pegasus Instruction Logger"),
         stf_valid_logger_(hart_tn, "stf_valid", "Pegasus STF Validator Logger"),
         finish_action_group_("finish_inst"),
-        stop_sim_action_group_("stop_sim")
+        stop_sim_action_group_("stop_sim"),
+        pause_sim_action_group_("pause_sim")
     {
         // Set up register sets
-        const auto json_dir = (xlen_ == 32) ? REG32_JSON_DIR : REG64_JSON_DIR;
-        int_rset_ =
-            RegisterSet::create(hart_tn, json_dir + std::string("/reg_int.json"), "int_regs");
-        fp_rset_ = RegisterSet::create(hart_tn, json_dir + std::string("/reg_fp.json"), "fp_regs");
+        int_rset_ = RegisterSet::create(hart_tn, reg_json_file_path_ + std::string("/reg_int.json"),
+                                        "int_regs");
+        fp_rset_ = RegisterSet::create(hart_tn, reg_json_file_path_ + std::string("/reg_fp.json"),
+                                       "fp_regs");
         const std::string vec_reg_json = "/reg_vec" + std::to_string(vlen_) + ".json";
-        vec_rset_ = RegisterSet::create(hart_tn, json_dir + vec_reg_json, "vec_regs");
-        csr_rset_ =
-            RegisterSet::create(hart_tn, json_dir + std::string("/reg_csr.json"), "csr_regs");
+        vec_rset_ = RegisterSet::create(hart_tn, reg_json_file_path_ + vec_reg_json, "vec_regs");
+        csr_rset_ = RegisterSet::create(
+            hart_tn, reg_json_file_path_ + std::string("/reg_csr_hart.json"), "csr_regs");
 
         auto add_registers = [this](const auto & reg_set)
         {
@@ -88,6 +124,10 @@ namespace pegasus
         stop_action_.addTag(ActionTags::STOP_SIM_TAG);
         stop_sim_action_group_.addAction(stop_action_);
 
+        // Create Action to pause simulation
+        pause_action_ = pegasus::Action::createAction<&PegasusState::pauseSim_>(this, "pause sim");
+        pause_sim_action_group_.addAction(pause_action_);
+
         // Update VectorConfig vlen
         vector_config_.setVLEN(vlen_);
     }
@@ -112,37 +152,6 @@ namespace pegasus
 
     void PegasusState::onBindTreeLate_()
     {
-        // Write initial values to CSR registers
-        const boost::json::array json = mavis::parseJSON(csr_values_json_).as_array();
-        for (uint32_t idx = 0; idx < json.size(); idx++)
-        {
-            const boost::json::object & csr_entry = json.at(idx).as_object();
-            const auto csr_name_it = csr_entry.find("name");
-            sparta_assert(csr_name_it != csr_entry.end());
-            const auto csr_value_it = csr_entry.find("value");
-            sparta_assert(csr_value_it != csr_entry.end());
-
-            const std::string csr_name = boost::json::value_to<std::string>(csr_name_it->value());
-            sparta::Register* csr_reg = findRegister(csr_name);
-            if (csr_reg)
-            {
-                sparta_assert(csr_reg->getGroupNum()
-                                  == (sparta::RegisterBase::group_num_type)RegType::CSR,
-                              "Provided initial value for not-CSR register: " << csr_name);
-                const std::string csr_hex_str =
-                    boost::json::value_to<std::string>(csr_value_it->value());
-                const uint64_t csr_val = std::stoull(csr_hex_str, nullptr, 16);
-                std::cout << csr_name << ": " << HEX16(csr_val) << std::endl;
-                csr_reg->dmiWrite(csr_val);
-            }
-            else
-            {
-                std::cout
-                    << "WARNING: Provided initial value for CSR register that does not exist! "
-                    << csr_name << std::endl;
-            }
-        }
-
         // Set up translation
         if (xlen_ == 64)
         {
@@ -152,6 +161,18 @@ namespace pegasus
         {
             changeMMUMode<RV32>();
         }
+
+        // Update vlenb csr
+        if (xlen_ == 32)
+        {
+            csr_rset_->getRegister(VLENB)->dmiWrite<uint32_t>(vlen_ / 8);
+        }
+        else // 64
+        {
+            csr_rset_->getRegister(VLENB)->dmiWrite<uint64_t>(vlen_ / 8);
+        }
+
+        /* Only after state has been fully initialized can we start creating Observers. */
 
         // FIXME: Does Sparta have a callback notif for when debug icount is reached?
         if (inst_logger_.observed())
@@ -175,22 +196,15 @@ namespace pegasus
         {
             if (xlen_ == 64)
             {
-                addObserver(std::make_unique<STFValidator>(stf_valid_logger_, ObserverMode::RV64,
-                                                           pc_, validation_stf_filename_));
+                addObserver(std::make_unique<STFValidator>(
+                    stf_valid_logger_, ObserverMode::RV64, validation_stf_filename_,
+                    validate_trace_begin_, validate_inst_begin_));
             }
             else
             {
-                addObserver(std::make_unique<STFValidator>(stf_valid_logger_, ObserverMode::RV32,
-                                                           pc_, validation_stf_filename_));
-            }
-        }
-
-        for (auto & obs : observers_)
-        {
-            obs->registerReadWriteMemCallbacks(pegasus_core_->getSystem()->getSystemMemory());
-            for (auto reg : csr_rset_->getRegisters())
-            {
-                obs->registerReadWriteCsrCallbacks(reg);
+                addObserver(std::make_unique<STFValidator>(
+                    stf_valid_logger_, ObserverMode::RV32, validation_stf_filename_,
+                    validate_trace_begin_, validate_inst_begin_));
             }
         }
     }
@@ -230,6 +244,23 @@ namespace pegasus
         translate_unit_->changeMMUMode<XLEN>(mode, ls_mode);
     }
 
+    void PegasusState::pauseHart(const SimPauseReason reason)
+    {
+        if (sim_state_.sim_pause_reason == SimPauseReason::INVALID)
+        {
+            sim_state_.sim_pause_reason = reason;
+            finish_action_group_.setNextActionGroup(&pause_sim_action_group_);
+        }
+    }
+
+    void PegasusState::unpauseHart()
+    {
+        sim_state_.sim_pause_reason = SimPauseReason::INVALID;
+        // We replace the next ActionGroup pointer to pause the sim, so it needs to
+        // be set back to Fetch
+        finish_action_group_.setNextActionGroup(fetch_unit_->getActionGroup());
+    }
+
     sparta::Register* PegasusState::getSpartaRegister(const mavis::OperandInfo::Element* operand)
     {
         if (operand)
@@ -239,6 +270,7 @@ namespace pegasus
                 case mavis::InstMetaData::OperandTypes::WORD:
                 case mavis::InstMetaData::OperandTypes::LONG:
                     return getIntRegister(operand->field_value);
+                case mavis::InstMetaData::OperandTypes::HALF:
                 case mavis::InstMetaData::OperandTypes::SINGLE:
                 case mavis::InstMetaData::OperandTypes::DOUBLE:
                 case mavis::InstMetaData::OperandTypes::QUAD:
@@ -373,14 +405,27 @@ namespace pegasus
                                                                   ActionTags::EXCEPTION_TAG);
         }
 
+        pegasus_core_->getSystem()->registerMemoryCallbacks(observer.get());
+        for (auto reg : csr_rset_->getRegisters())
+        {
+            observer->registerReadWriteCsrCallbacks(reg);
+        }
+
         observers_.emplace_back(std::move(observer));
     }
 
-    void PegasusState::insertExecuteActions(ActionGroup* action_group)
+    void PegasusState::insertExecuteActions(ActionGroup* action_group, const bool is_memory_inst)
     {
         if (pre_execute_action_)
         {
-            action_group->insertActionBefore(pre_execute_action_, ActionTags::EXECUTE_TAG);
+            if (is_memory_inst)
+            {
+                action_group->insertActionBefore(pre_execute_action_, ActionTags::COMPUTE_ADDR_TAG);
+            }
+            else
+            {
+                action_group->insertActionBefore(pre_execute_action_, ActionTags::EXECUTE_TAG);
+            }
         }
     }
 
@@ -395,6 +440,10 @@ namespace pegasus
         // Increment instruction count
         ++sim_state_.inst_count;
 
+        // TODO: We don't have a timing model yet so
+        // for now just assume each inst takes 1 cycle
+        ++sim_state_.cycles;
+
         if constexpr (CHECK_ILIMIT)
         {
             if (sim_state_.inst_count == ilimit_)
@@ -406,10 +455,159 @@ namespace pegasus
             }
         }
 
+        if (sim_state_.inst_count % quantum_ == 0)
+        {
+            DLOG("Executed " << std::dec << quantum_
+                             << " instructions (total: " << sim_state_.inst_count << ")");
+            pauseHart(SimPauseReason::QUANTUM);
+        }
+
         return ++action_it;
     }
 
-    // Initialze a program stack (argc, argv, envp, auxv, etc)
+    template <bool IS_UNIT_TEST> bool PegasusState::compare(const PegasusState* state) const
+    {
+        auto xlen = getXlen();
+        auto other_xlen = state->getXlen();
+        if constexpr (IS_UNIT_TEST)
+        {
+            EXPECT_EQUAL(xlen, other_xlen);
+        }
+        else if (xlen != other_xlen)
+        {
+            return false;
+        }
+
+        auto stop_sim_on_wfi = getStopSimOnWfi();
+        auto other_stop_sim_on_wfi = state->getStopSimOnWfi();
+        if constexpr (IS_UNIT_TEST)
+        {
+            EXPECT_EQUAL(stop_sim_on_wfi, other_stop_sim_on_wfi);
+        }
+        else if (stop_sim_on_wfi != other_stop_sim_on_wfi)
+        {
+            return false;
+        }
+
+        auto pc = getPc();
+        auto other_pc = state->getPc();
+        if constexpr (IS_UNIT_TEST)
+        {
+            EXPECT_EQUAL(pc, other_pc);
+        }
+        else if (pc != other_pc)
+        {
+            return false;
+        }
+
+        auto priv_mode = getPrivMode();
+        auto other_priv_mode = state->getPrivMode();
+        if constexpr (IS_UNIT_TEST)
+        {
+            EXPECT_EQUAL(priv_mode, other_priv_mode);
+        }
+        else if (priv_mode != other_priv_mode)
+        {
+            return false;
+        }
+
+        auto ldst_priv_mode = getLdstPrivMode();
+        auto other_ldst_priv_mode = state->getLdstPrivMode();
+        if constexpr (IS_UNIT_TEST)
+        {
+            EXPECT_EQUAL(ldst_priv_mode, other_ldst_priv_mode);
+        }
+        else if (ldst_priv_mode != other_ldst_priv_mode)
+        {
+            return false;
+        }
+
+        auto virtual_mode = getVirtualMode();
+        auto other_virtual_mode = state->getVirtualMode();
+        if constexpr (IS_UNIT_TEST)
+        {
+            EXPECT_EQUAL(virtual_mode, other_virtual_mode);
+        }
+        else if (virtual_mode != other_virtual_mode)
+        {
+            return false;
+        }
+
+        auto curr_excp = getCurrentException();
+        auto other_curr_excp = state->getCurrentException();
+        if constexpr (IS_UNIT_TEST)
+        {
+            EXPECT_EQUAL(curr_excp, other_curr_excp);
+        }
+        else if (curr_excp != other_curr_excp)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    template <bool IS_UNIT_TEST>
+    bool PegasusState::SimState::compare(const SimState* sim_state) const
+    {
+        if constexpr (IS_UNIT_TEST)
+        {
+            EXPECT_EQUAL(current_opcode, sim_state->current_opcode);
+        }
+        else if (current_opcode != sim_state->current_opcode)
+        {
+            return false;
+        }
+
+        if constexpr (IS_UNIT_TEST)
+        {
+            EXPECT_EQUAL(current_uid, sim_state->current_uid);
+        }
+        else if (current_uid != sim_state->current_uid)
+        {
+            return false;
+        }
+
+        if constexpr (IS_UNIT_TEST)
+        {
+            EXPECT_EQUAL(inst_count, sim_state->inst_count);
+        }
+        else if (inst_count != sim_state->inst_count)
+        {
+            return false;
+        }
+
+        if constexpr (IS_UNIT_TEST)
+        {
+            EXPECT_EQUAL(sim_stopped, sim_state->sim_stopped);
+        }
+        else if (sim_stopped != sim_state->sim_stopped)
+        {
+            return false;
+        }
+
+        if constexpr (IS_UNIT_TEST)
+        {
+            EXPECT_EQUAL(test_passed, sim_state->test_passed);
+        }
+        else if (test_passed != sim_state->test_passed)
+        {
+            return false;
+        }
+
+        if constexpr (IS_UNIT_TEST)
+        {
+            EXPECT_EQUAL(workload_exit_code, sim_state->workload_exit_code);
+        }
+        else if (workload_exit_code != sim_state->workload_exit_code)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    // Initialize a program stack (argc, argv, envp, auxv, etc)
     // Useful info about ELF binaries: https://lwn.net/Articles/631631/
     // This is used mostly for system call emulation
     void PegasusState::setupProgramStack(const std::vector<std::string> & program_arguments)
@@ -464,19 +662,16 @@ namespace pegasus
         sparta::Register* reg = findRegister("sp", MUST_EXIST);
         uint64_t sp = 0;
 
-        // Typicsl stack pointer is 8KB on most linux systems
-        const uint64_t typical_ulimit_stack_size = 8192;
         if (xlen_ == 64)
         {
             sp = reg->dmiRead<RV64>();
-            sparta_assert(std::numeric_limits<uint64_t>::max() - sp > typical_ulimit_stack_size,
+            sparta_assert(std::numeric_limits<uint64_t>::max() - sp > ulimit_stack_size_,
                           "Stack pointer initial value has a good chance of overflowing");
         }
         else
         {
             sp = reg->dmiRead<RV32>();
-            sparta_assert(std::numeric_limits<uint32_t>::max() - (uint32_t)sp
-                              > typical_ulimit_stack_size,
+            sparta_assert(std::numeric_limits<uint32_t>::max() - (uint32_t)sp > ulimit_stack_size_,
                           "Stack pointer initial value has a good chance of overflowing");
         }
         sparta_assert(sp != 0, "The stack pointer (sp aka x2) is set to 0.  Use --reg \"sp <val>\" "
@@ -612,13 +807,13 @@ namespace pegasus
 
             std::cout << "PegasusState::boot()\n";
             std::cout << std::hex;
-            std::cout << "\tMHARTID: 0x" << state->getCsrRegister(MHARTID)->dmiRead<uint64_t>()
+            std::cout << "\tMHARTID: " << state->getCsrRegister(MHARTID)->dmiRead<uint64_t>()
                       << std::endl;
-            std::cout << "\tMISA:    0x" << state->getCsrRegister(MISA)->dmiRead<uint64_t>()
+            std::cout << "\tMISA:    " << state->getCsrRegister(MISA)->dmiRead<uint64_t>()
                       << std::endl;
-            std::cout << "\tMSTATUS: 0x" << state->getCsrRegister(MSTATUS)->dmiRead<uint64_t>()
+            std::cout << "\tMSTATUS: " << state->getCsrRegister(MSTATUS)->dmiRead<uint64_t>()
                       << std::endl;
-            std::cout << "\tSSTATUS: 0x" << state->getCsrRegister(SSTATUS)->dmiRead<uint64_t>()
+            std::cout << "\tSSTATUS: " << state->getCsrRegister(SSTATUS)->dmiRead<uint64_t>()
                       << std::endl;
             std::cout << std::dec;
         }
@@ -636,5 +831,11 @@ namespace pegasus
             sim_controller_->onSimulationFinished(this);
         }
     }
+
+    template bool PegasusState::compare<false>(const PegasusState* rhs) const;
+    template bool PegasusState::compare<true>(const PegasusState* rhs) const;
+
+    template bool PegasusState::SimState::compare<false>(const SimState* rhs) const;
+    template bool PegasusState::SimState::compare<true>(const SimState* rhs) const;
 
 } // namespace pegasus

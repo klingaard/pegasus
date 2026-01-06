@@ -17,14 +17,6 @@
 #include "sparta/simulation/Unit.hpp"
 #include "sparta/utils/SpartaSharedPointerAllocator.hpp"
 
-#ifndef REG32_JSON_DIR
-#error "REG32_JSON_DIR must be defined"
-#endif
-
-#ifndef REG64_JSON_DIR
-#error "REG64_JSON_DIR must be defined"
-#endif
-
 namespace pegasus
 {
     class PegasusInst;
@@ -40,6 +32,11 @@ namespace pegasus
     class STFLogger;
     class STFValidator;
     class SystemCallEmulator;
+
+    namespace cosim
+    {
+        class Event;
+    }
 
     class PegasusState : public sparta::Unit
     {
@@ -58,18 +55,27 @@ namespace pegasus
             }
 
             PARAMETER(uint32_t, hart_id, 0, "Hart ID")
+            PARAMETER(char, priv_mode, 'm', "Privilege mode at boot (m, s, or u)")
             PARAMETER(uint32_t, vlen, 256, "Vector register size in bits")
-            PARAMETER(std::string, csr_values, "arch/default_csr_values.json",
-                      "Provides initial values of CSRs")
             PARAMETER(uint32_t, ilimit, 0, "Instruction limit for stopping simulation")
+            PARAMETER(uint32_t, quantum, 500, "Instruction quantum size")
             PARAMETER(bool, stop_sim_on_wfi, false, "Executing a WFI instruction stops simulation")
             PARAMETER(std::string, stf_filename, "",
                       "STF Trace file name (when not given, STF tracing is disabled)")
             PARAMETER(std::string, validate_with_stf, "",
                       "STF Trace file name (when not given, STF tracing is disabled)")
+            PARAMETER(uint64_t, validate_trace_begin, 1,
+                      "STF validation trace file begin instruction number")
+            PARAMETER(uint64_t, validate_inst_begin, 1,
+                      "STF validation pegasus begin instruction number")
+            // Typical stack pointer is 8KB on most linux systems
+            PARAMETER(uint32_t, ulimit_stack_size, 8192,
+                      "Typical ulimit stack size for system call emulation")
 
             // Set by PegasusCore
             HIDDEN_PARAMETER(uint32_t, xlen, 64, "XLEN (either 32 or 64 bit)")
+            HIDDEN_PARAMETER(std::string, reg_json_file_path, "",
+                             "Where are the Pegasus register files?")
           private:
             static bool validateVlen_(uint32_t & vlen_val, const sparta::TreeNode*)
             {
@@ -87,6 +93,8 @@ namespace pegasus
         HartId getHartId() const { return hart_id_; }
 
         uint64_t getXlen() const;
+
+        uint64_t getQuantumSize() const { return quantum_; }
 
         bool getStopSimOnWfi() const { return stop_sim_on_wfi_; }
 
@@ -110,20 +118,25 @@ namespace pegasus
 
         using Reservation = sparta::utils::ValidValue<Addr>;
 
-        Reservation & getReservation() { return reservation_; }
-
-        const Reservation & getReservation() const { return reservation_; }
-
         template <typename XLEN> void changeMMUMode();
 
         struct SimState
         {
+            // Executing instruction
             uint32_t current_opcode = 0;
             bool partial_opcode = false;
             uint64_t current_uid = 0;
             PegasusInstPtr current_inst = nullptr;
+
+            // Number of instructions executed
             uint64_t inst_count = 0;
-            bool sim_stopped = false;
+
+            // How many cycles
+            uint64_t cycles = 0;
+
+            // Simulation control
+            SimPauseReason sim_pause_reason = SimPauseReason::INVALID;
+            bool sim_stopped = true;
             bool test_passed = true;
             int64_t workload_exit_code = 0;
 
@@ -131,12 +144,19 @@ namespace pegasus
             {
                 current_opcode = 0;
                 current_inst.reset();
+                ++current_uid;
             }
+
+            template <bool IS_UNIT_TEST = false> bool compare(const SimState* state) const;
         };
 
         const SimState* getSimState() const { return &sim_state_; }
 
         SimState* getSimState() { return &sim_state_; }
+
+        void pauseHart(const SimPauseReason reason);
+
+        void unpauseHart();
 
         const VectorConfig* getVectorConfig() const { return &vector_config_; }
 
@@ -149,6 +169,12 @@ namespace pegasus
             inst->setUid(sim_state_.current_uid);
             sim_state_.current_inst = inst;
         }
+
+        void setCurrentException(uint64_t excp_code) { current_exception_ = excp_code; }
+
+        void clearCurrentException() { current_exception_ = std::numeric_limits<ExcpCode>::max(); }
+
+        uint64_t getCurrentException() const { return current_exception_; }
 
         PegasusTranslationState* getFetchTranslationState() { return &fetch_translation_state_; }
 
@@ -193,6 +219,24 @@ namespace pegasus
             return csr_rset_->getRegister(reg_num);
         }
 
+        sparta::Register* findRegister(const RegId reg_id)
+        {
+            switch (reg_id.reg_type)
+            {
+                case RegType::INTEGER:
+                    return getIntRegister(reg_id.reg_num);
+                case RegType::FLOATING_POINT:
+                    return getFpRegister(reg_id.reg_num);
+                case RegType::VECTOR:
+                    return getVecRegister(reg_id.reg_num);
+                case RegType::CSR:
+                    return getCsrRegister(reg_id.reg_num);
+                case RegType::INVALID:
+                    sparta_assert(false, "Invalid register type!");
+            }
+            return nullptr;
+        }
+
         sparta::Register* findRegister(const std::string & reg_name, bool must_exist = true) const;
 
         template <typename MemoryType> MemoryType readMemory(const Addr paddr);
@@ -201,7 +245,9 @@ namespace pegasus
 
         void addObserver(std::unique_ptr<Observer> observer);
 
-        void insertExecuteActions(ActionGroup* action_group);
+        const std::vector<std::unique_ptr<Observer>> & getObservers() const { return observers_; }
+
+        void insertExecuteActions(ActionGroup* action_group, const bool is_memory_inst);
 
         ActionGroup* getFinishActionGroup() { return &finish_action_group_; }
 
@@ -217,6 +263,8 @@ namespace pegasus
 
             finish_action_group_.setNextActionGroup(&stop_sim_action_group_);
         }
+
+        template <bool IS_UNIT_TEST = false> bool compare(const PegasusState* state) const;
 
         // Initialze a program stack (argc, argv, envp, auxv, etc)
         void setupProgramStack(const std::vector<std::string> & program_arguments);
@@ -250,6 +298,8 @@ namespace pegasus
             return ++action_it;
         }
 
+        Action::ItrType pauseSim_(PegasusState*, Action::ItrType action_it) { return ++action_it; }
+
         //! Hart ID
         const HartId hart_id_;
 
@@ -259,11 +309,14 @@ namespace pegasus
         // XLEN (either 32 or 64 bit)
         const uint64_t xlen_ = 64;
 
-        // CSR Initial Values JSON
-        const std::string csr_values_json_;
+        // Path to register JSONs
+        const std::string reg_json_file_path_;
 
         // Instruction limit to end simulation
         const uint64_t ilimit_ = 0;
+
+        // Instruction quantum size
+        const uint64_t quantum_;
 
         //! Stop simulatiion on WFI
         const bool stop_sim_on_wfi_;
@@ -271,6 +324,11 @@ namespace pegasus
         // STF Trace Filename
         const std::string stf_filename_;
         const std::string validation_stf_filename_;
+        const uint64_t validate_trace_begin_ = 0x1;
+        const uint64_t validate_inst_begin_ = 0x1;
+
+        //! Typical stack size for system call emulation
+        const uint64_t ulimit_stack_size_;
 
         //! Current pc
         Addr pc_ = 0x0;
@@ -290,8 +348,8 @@ namespace pegasus
         //! Current virtual translation mode
         bool virtual_mode_ = false;
 
-        //! LR/SC Reservations
-        Reservation reservation_;
+        //! Current exception code
+        uint64_t current_exception_ = std::numeric_limits<ExcpCode>::max();
 
         //! Simulation state
         SimState sim_state_;
@@ -347,9 +405,17 @@ namespace pegasus
         Action stop_action_;
         ActionGroup stop_sim_action_group_;
 
+        // Pause simulation Action
+        Action pause_action_;
+        ActionGroup pause_sim_action_group_;
+
         // Co-simulation debug utils
         std::unordered_map<std::string, int> reg_ids_by_name_;
         SimController* sim_controller_ = nullptr;
+
+        // Event friend class for cosim. Allows direct state manipulation
+        // during flush (rollback) operations.
+        friend class cosim::Event;
     };
 
     template <typename XLEN>

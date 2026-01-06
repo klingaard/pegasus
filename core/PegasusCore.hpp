@@ -15,6 +15,8 @@
 #include "mavis/mavis/extension_managers/RISCVExtensionManager.hpp"
 
 #include "sparta/simulation/ResourceFactory.hpp"
+#include "sparta/events/Event.hpp"
+#include "sparta/events/PayloadEvent.hpp"
 
 template <class InstT, class ExtenT, class InstTypeAllocator, class ExtTypeAllocator> class Mavis;
 
@@ -35,16 +37,30 @@ namespace pegasus
         class PegasusCoreParameters : public sparta::ParameterSet
         {
           public:
-            PegasusCoreParameters(sparta::TreeNode* node) : sparta::ParameterSet(node) {}
+            PegasusCoreParameters(sparta::TreeNode* node) : sparta::ParameterSet(node)
+            {
+                profile.addDependentValidationCallback(&PegasusCoreParameters::validateProfile_,
+                                                       "RISC-V profile constraint");
+            }
 
             PARAMETER(uint32_t, core_id, 0, "Core ID")
             PARAMETER(uint32_t, num_harts, 1, "Number of harts (hardware threads)")
-            PARAMETER(bool, enable_syscall_emulation, false,
-                      "System calls (ecall) will be emulated");
+            PARAMETER(std::string, arch, "rva23", "Architecture name")
+            PARAMETER(std::string, profile, "rva23", "RISC-V profile (rva23, rvb23, rvm23)")
             PARAMETER(std::string, isa, std::string("rv64") + DEFAULT_ISA_STR, "ISA string")
             PARAMETER(std::string, priv, "msu", "Privilege modes supported")
             PARAMETER(std::string, isa_file_path, "mavis_json", "Where are the Mavis isa files?")
             PARAMETER(std::string, uarch_file_path, "arch", "Where are the Pegasus uarch files?")
+            PARAMETER(uint64_t, pause_counter_duration, 256, "Pause counter duration in cycles")
+
+          private:
+            static bool validateProfile_(std::string & profile, const sparta::TreeNode*)
+            {
+                const std::vector<std::string> riscv_profiles_supported{"rva23", "rvb23", "rvm23"};
+                return std::find(riscv_profiles_supported.begin(), riscv_profiles_supported.end(),
+                                 profile)
+                       != riscv_profiles_supported.end();
+            }
         };
 
         PegasusCore(sparta::TreeNode* core_node, const PegasusCoreParameters* p);
@@ -109,7 +125,40 @@ namespace pegasus
 
         uint64_t getPcAlignmentMask() const { return pc_alignment_mask_; }
 
+        using Reservation = sparta::utils::ValidValue<Addr>;
+
+        void makeReservation(HartId hart_id, Addr paddr)
+        {
+
+            for (uint32_t hart_id = 0; hart_id < num_harts_; ++hart_id)
+            {
+                auto & reservation = reservations_.at(hart_id);
+                if (reservation.isValid() && (reservation.getValue() == paddr))
+                {
+                    reservation.clearValid();
+                }
+            }
+            reservations_.at(hart_id) = paddr;
+        }
+
+        Reservation & getReservation(HartId hart_id) { return reservations_.at(hart_id); }
+
+        const Reservation & getReservation(HartId hart_id) const
+        {
+            return reservations_.at(hart_id);
+        }
+
+        void clearReservations()
+        {
+            for (auto & reservation : reservations_)
+            {
+                reservation.clearValid();
+            }
+        }
+
         const InstHandlers* getInstHandlers() const { return &inst_handlers_; }
+
+        template <bool IS_UNIT_TEST = false> bool compare(const PegasusCore* core) const;
 
       private:
         void onBindTreeEarly_() override;
@@ -142,8 +191,28 @@ namespace pegasus
         // Pegasus State for each hart
         std::map<HartId, PegasusState*> threads_;
 
+        // Execute the threads on this core
+        void advanceSim_();
+        sparta::Event<> ev_advance_sim_;
+
+        // Pause counter
+        const uint64_t pause_counter_duration_;
+        void pauseCounterExpires_(const HartId & hart_id);
+        sparta::PayloadEvent<HartId> ev_pause_counter_expires_;
+
+        // Status of each thread
+        HartId current_hart_id_ = 0;
+        std::bitset<8> threads_running_;
+
         // Is system call emulation enabled?
         const bool syscall_emulation_enabled_;
+
+        // Arch name
+        // FIXME: We should be able to get this from Sparta --arch
+        const std::string arch_name_;
+
+        // RISC-V profile
+        const std::string profile_;
 
         // ISA string
         const std::string isa_string_;
@@ -158,10 +227,10 @@ namespace pegasus
         const std::vector<std::string> supported_rv64_extensions_;
         const std::vector<std::string> supported_rv32_extensions_;
 
-        // Path to Mavis
+        // Path to Mavis isa JSONs
         const std::string isa_file_path_;
 
-        // Path to Pegasus
+        // Path to Pegasus uarch JSONs
         const std::string uarch_file_path_;
 
         // Get Pegasus arch JSONs for Mavis
@@ -196,6 +265,9 @@ namespace pegasus
             pc_alignment_ = pc_alignment;
             pc_alignment_mask_ = ~(pc_alignment - 1);
         }
+
+        //! LR/SC Reservations
+        std::vector<Reservation> reservations_;
 
         // Instruction Actions
         InstHandlers inst_handlers_;

@@ -1,9 +1,15 @@
 #include "PegasusCore.hpp"
 #include "system/PegasusSystem.hpp"
 #include "system/SystemCallEmulator.hpp"
+#include "include/gen/CSRBitMasks32.hpp"
 
 #include "sparta/simulation/ResourceTreeNode.hpp"
 #include "sparta/utils/LogUtils.hpp"
+#include "sparta/events/StartupEvent.hpp"
+#include "sparta/utils/SpartaTester.hpp"
+
+#include <filesystem>
+#include <regex>
 
 namespace pegasus
 {
@@ -79,7 +85,16 @@ namespace pegasus
         sparta::Unit(core_tn),
         core_id_(p->core_id),
         num_harts_(p->num_harts),
-        syscall_emulation_enabled_(p->enable_syscall_emulation),
+        ev_advance_sim_(&unit_event_set_, "advance_sim",
+                        CREATE_SPARTA_HANDLER(PegasusCore, advanceSim_)),
+        pause_counter_duration_(p->pause_counter_duration),
+        ev_pause_counter_expires_(
+            &unit_event_set_, "pause_counter_expires",
+            CREATE_SPARTA_HANDLER_WITH_DATA(PegasusCore, pauseCounterExpires_, HartId)),
+        syscall_emulation_enabled_(
+            PegasusSimParameters::getParameter<bool>(core_tn, "enable_syscall_emulation")),
+        arch_name_(p->arch),
+        profile_(p->profile),
         isa_string_(p->isa),
         supported_priv_modes_(initSupportedPrivilegeModes(p->priv)),
         xlen_(getXlenFromIsaString(isa_string_)),
@@ -90,6 +105,7 @@ namespace pegasus
         extension_manager_(mavis::extension_manager::riscv::RISCVExtensionManager::fromISA(
             isa_string_, isa_file_path_ + std::string("/riscv_isa_spec.json"), isa_file_path_)),
         hypervisor_enabled_(extension_manager_.isEnabled("h")),
+        reservations_(num_harts_),
         inst_handlers_(syscall_emulation_enabled_)
     {
         // top.core*.hart*
@@ -104,6 +120,12 @@ namespace pegasus
             // Set XLEN
             hart_tn->getChildAs<sparta::ParameterBase>("params.xlen")
                 ->setValueFromString(std::to_string(xlen_));
+
+            // Set path to register JSONs (from "arch")
+            const std::string reg_json_file_path =
+                uarch_file_path_ + "/" + arch_name_ + "/rv" + std::to_string(xlen_) + "/gen";
+            hart_tn->getChildAs<sparta::ParameterBase>("params.reg_json_file_path")
+                ->setValueFromString(reg_json_file_path);
 
             // top.core*.hart*.fetch
             tns_to_delete_.emplace_back(new sparta::ResourceTreeNode(
@@ -138,6 +160,8 @@ namespace pegasus
                           "ISA extension: " << unsupportedExt
                                             << " is not supported in isa_string: " << isa_string_);
         }
+
+        sparta::StartupEvent(core_tn, CREATE_SPARTA_HANDLER(PegasusCore, advanceSim_));
     }
 
     PegasusCore::~PegasusCore() {}
@@ -152,10 +176,14 @@ namespace pegasus
 
     void PegasusCore::stopSim(const int64_t exit_code)
     {
+        DLOG("Stopping simulation for all harts");
         for (auto & [hart_idx, thread] : threads_)
         {
             thread->stopSim(exit_code);
+            threads_running_.reset(hart_idx);
         }
+
+        ev_pause_counter_expires_.cancel();
     }
 
     void PegasusCore::onBindTreeEarly_()
@@ -174,7 +202,6 @@ namespace pegasus
             PegasusState* state = threads_.at(hart_idx);
             // This MUST be done before initializing Mavis
             state->setPegasusCore(this);
-            state->setPc(system_->getStartingPc());
         }
 
         // Initialize Mavis
@@ -215,10 +242,14 @@ namespace pegasus
         {
             PegasusState* state = threads_.at(hart_idx);
 
-            const auto workload_and_args = system_->getWorkloadAndArgs();
-            if (false == workload_and_args.empty())
+            const auto workloads_and_args = system_->getWorkloadsAndArgs();
+            if (hart_idx < workloads_and_args.size())
             {
-                state->setupProgramStack(workload_and_args);
+                state->setupProgramStack(workloads_and_args.at(hart_idx));
+
+                state->setPc(system_->getStartingPc());
+                state->getSimState()->sim_stopped = false;
+                threads_running_.set(hart_idx);
             }
         }
     }
@@ -250,8 +281,16 @@ namespace pegasus
         }
 
         // FIXME: Assume both User and Supervisor mode are supported
-        ext_val |= 1 << CSR::MISA::u::high_bit;
-        ext_val |= 1 << CSR::MISA::s::high_bit;
+        if constexpr (std::is_same_v<XLEN, RV64>)
+        {
+            ext_val |= 1 << CSR_64::MISA::u::high_bit;
+            ext_val |= 1 << CSR_64::MISA::s::high_bit;
+        }
+        else
+        {
+            ext_val |= 1 << CSR_32::MISA::u::high_bit;
+            ext_val |= 1 << CSR_32::MISA::s::high_bit;
+        }
 
         return ext_val;
     }
@@ -261,17 +300,195 @@ namespace pegasus
 
     mavis::FileNameListType PegasusCore::getUArchFiles_() const
     {
+        mavis::FileNameListType uarch_files;
+
         const std::string xlen_str = std::to_string(xlen_);
-        const std::string xlen_uarch_file_path = uarch_file_path_ + "/rv" + xlen_str + "/gen";
-        if (xlen_ == 64)
+        const std::string xlen_uarch_file_path =
+            uarch_file_path_ + "/" + arch_name_ + "/rv" + xlen_str + "/gen";
+        const std::regex filename_regex("pegasus_uarch_.*json");
+        for (const auto & entry : std::filesystem::directory_iterator{xlen_uarch_file_path})
         {
-            const mavis::FileNameListType uarch_files = RV64_UARCH_JSON_LIST;
-            return uarch_files;
+            if (std::regex_search(entry.path().filename().string(), filename_regex))
+            {
+                DLOG("Loading: " << entry.path());
+                uarch_files.emplace_back(entry.path());
+            }
         }
-        else
+
+        return uarch_files;
+    }
+
+    // This method will execute a single thread for up to X instructions
+    // where X is the quantum for that thread. The cycle count of all threads
+    // is updated to match the current thread's cycle count. Then this event
+    // is rescheduled at that cycle count.
+    void PegasusCore::advanceSim_()
+    {
+        PegasusState* state = threads_[current_hart_id_];
+        auto* sim_state = state->getSimState();
+        bool pause_thread = false;
+        if ((sim_state->sim_stopped == false)
+            && (sim_state->sim_pause_reason == SimPauseReason::INVALID))
         {
-            const mavis::FileNameListType uarch_files = RV32_UARCH_JSON_LIST;
-            return uarch_files;
+            DLOG("Running hart" << std::dec << current_hart_id_);
+            Fetch* fetch = state->getFetchUnit();
+            ActionGroup* next_action_group = fetch->getActionGroup();
+            while (next_action_group)
+            {
+                next_action_group = next_action_group->execute(state);
+            }
+
+            if (sim_state->sim_stopped)
+            {
+                DLOG("Stopping hart" << std::dec << current_hart_id_);
+                threads_running_.reset(current_hart_id_);
+            }
+
+            switch (sim_state->sim_pause_reason)
+            {
+                case SimPauseReason::QUANTUM:
+                    state->unpauseHart();
+                    break;
+                case SimPauseReason::INTERRUPT:
+                    sparta_assert(false, "Pause reason INTERRUPT is not supported yet!");
+                    break;
+                case SimPauseReason::PAUSE:
+                    pause_thread = true;
+                    break;
+                case SimPauseReason::FORK:
+                    sparta_assert(false, "Pause reason FORK is not supported yet!");
+                    break;
+                case SimPauseReason::INVALID:
+                    break;
+            }
+        }
+
+        // Update current cycle for all threads
+        const uint64_t current_cycle = sim_state->cycles;
+        for (HartId hart_id = 0; hart_id < num_harts_; ++hart_id)
+        {
+            threads_[hart_id]->getSimState()->cycles = current_cycle;
+        }
+
+        if (pause_thread)
+        {
+            DLOG("Starting pause counter for hart " << std::dec << current_hart_id_);
+            threads_running_.reset(current_hart_id_);
+            ev_pause_counter_expires_.preparePayload(current_hart_id_)
+                ->schedule(current_cycle - getClock()->currentCycle() + pause_counter_duration_);
+        }
+
+        // Simple round robin
+        ++current_hart_id_;
+        current_hart_id_ = (current_hart_id_ == num_harts_) ? 0 : current_hart_id_;
+
+        if (threads_running_.any())
+        {
+            // Keep going!
+            ev_advance_sim_.schedule(current_cycle - getClock()->currentCycle());
         }
     }
+
+    // This event will be scheduled if a thread executes an instruction
+    // that pauses it. Once the pause counter expires, this event will
+    // unpause the thread and reschedule the advance sim event.
+    void PegasusCore::pauseCounterExpires_(const HartId & hart_id)
+    {
+        PegasusState* state = threads_[hart_id];
+        if (state->getSimState()->sim_pause_reason == SimPauseReason::PAUSE)
+        {
+            DLOG("Pause counter expired for hart" << std::dec << hart_id);
+            state->unpauseHart();
+            threads_running_.set(hart_id);
+            if (ev_advance_sim_.isScheduled() == false)
+            {
+                // Update current cycle for all threads
+                const uint64_t current_cycle = getClock()->currentCycle();
+                for (HartId hart_id = 0; hart_id < num_harts_; ++hart_id)
+                {
+                    threads_[hart_id]->getSimState()->cycles = current_cycle;
+                }
+
+                // Keep going!
+                ev_advance_sim_.schedule();
+            }
+        }
+    }
+
+    template <bool IS_UNIT_TEST> bool PegasusCore::compare(const PegasusCore* core) const
+    {
+        if constexpr (IS_UNIT_TEST)
+        {
+            EXPECT_EQUAL(xlen_, core->xlen_);
+        }
+        else if (xlen_ != core->xlen_)
+        {
+            return false;
+        }
+
+        auto compression_enabled = isCompressionEnabled();
+        auto other_compression_enabled = core->isCompressionEnabled();
+        if constexpr (IS_UNIT_TEST)
+        {
+            EXPECT_EQUAL(compression_enabled, other_compression_enabled);
+        }
+        else if (compression_enabled != other_compression_enabled)
+        {
+            return false;
+        }
+
+        auto has_hypervisor = hasHypervisor();
+        auto other_has_hypervisor = core->hasHypervisor();
+        if constexpr (IS_UNIT_TEST)
+        {
+            EXPECT_EQUAL(has_hypervisor, other_has_hypervisor);
+        }
+        else if (has_hypervisor != other_has_hypervisor)
+        {
+            return false;
+        }
+
+        auto pc_alignment = getPcAlignment();
+        auto other_pc_alignment = core->getPcAlignment();
+        if constexpr (IS_UNIT_TEST)
+        {
+            EXPECT_EQUAL(pc_alignment, other_pc_alignment);
+        }
+        else if (pc_alignment != other_pc_alignment)
+        {
+            return false;
+        }
+
+        auto pc_alignment_mask = getPcAlignmentMask();
+        auto other_pc_alignment_mask = core->getPcAlignmentMask();
+        if constexpr (IS_UNIT_TEST)
+        {
+            EXPECT_EQUAL(pc_alignment_mask, other_pc_alignment_mask);
+        }
+        else if (pc_alignment_mask != other_pc_alignment_mask)
+        {
+            return false;
+        }
+
+        auto misa_ext_field_value =
+            xlen_ == 32 ? getMisaExtFieldValue<uint32_t>() : getMisaExtFieldValue<uint64_t>();
+
+        auto other_misa_ext_field_value = core->getXlen() == 32
+                                              ? core->getMisaExtFieldValue<uint32_t>()
+                                              : core->getMisaExtFieldValue<uint64_t>();
+
+        if constexpr (IS_UNIT_TEST)
+        {
+            EXPECT_EQUAL(misa_ext_field_value, other_misa_ext_field_value);
+        }
+        else if (misa_ext_field_value != other_misa_ext_field_value)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    template bool PegasusCore::compare<false>(const PegasusCore* core) const;
+    template bool PegasusCore::compare<true>(const PegasusCore* core) const;
 } // namespace pegasus

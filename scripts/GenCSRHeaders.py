@@ -4,6 +4,7 @@
 
 import json
 import os
+import glob
 
 from RV64_CSR import CSR64_DEFS
 from RV32_CSR import CSR32_DEFS
@@ -78,7 +79,7 @@ def gen_csr_helpers_header():
             lines.append('        {')
 
             for csr_num, csr_defn in CSR_DEFS.items():
-                csr_fields = csr_defn[2]
+                csr_fields = csr_defn['fields']
                 if not csr_fields:
                     bit_mask = (1 << bit_shift_amt) - 1
                 else:
@@ -141,7 +142,7 @@ def gen_csr_helpers_header():
                 return permutations
 
             for csr_num, csr_defn in CSR_DEFS.items():
-                csr_fields = csr_defn[2]
+                csr_fields = csr_defn['fields']
                 if not csr_fields:
                     continue
 
@@ -210,7 +211,7 @@ def gen_csr_num_header():
     csr_largest_value = -1;
     for k, v in CSR_DEFS.items():
         csr_header_file.write("    static constexpr uint32_t "+
-                              (v[0]).upper()+
+                              (v['name']).upper()+
                               " = "+
                               str(hex(k))+
                               "; // "+
@@ -246,7 +247,7 @@ def gen_csr_num_header():
     csr_header_file.close()
     return CSR_HEADER_FILE_NAME
 
-def gen_csr_field_idxs_header(reg_size):
+def gen_csr_field_idxs_header(registers, reg_size):
     """Generate the CSR header file with field indexes
     """
     data_width = reg_size*8
@@ -254,28 +255,15 @@ def gen_csr_field_idxs_header(reg_size):
     csr_fi_header_file = open(csr_fi_header_file_name, "w")
     csr_fi_header_file.write(GetCsrNumFileHeader(-1))
 
-    if data_width == 32:
-        json_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "arch", "gen", "rv32"))
-    elif data_width == 64:
-        json_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "arch", "gen", "rv64"))
-
-    reg_csr_json_filename = os.path.join(json_dir, "reg_csr.json")
-    reg_fp_json_filename  = os.path.join(json_dir, "reg_fp.json")
-    reg_int_json_filename = os.path.join(json_dir, "reg_int.json")
-    reg_vec_json_filename = os.path.join(json_dir, "reg_vec128.json")
-
-    def WriteRegisterFieldIdxs(reg_type, reg_json_filename, fout):
-        with open(reg_json_filename) as reg_json_file:
-            reg_json = json.load(reg_json_file)
-
-        def GetWritableFieldsBitMask(reg_json):
-            if 'fields' not in reg_json:
+    def WriteRegisterFieldIdxs(reg_type, registers, fout):
+        def GetWritableFieldsBitMask(reg):
+            if 'fields' not in reg:
                 return 0xffffffffffffffff
 
             if reg_type == 'FP':
                 return 0xffffffffffffffff
 
-            fields = reg_json['fields']
+            fields = reg['fields']
             bit_mask = 0
             for _, field_defn in fields.items():
                 if not field_defn['readonly']:
@@ -289,8 +277,8 @@ def gen_csr_field_idxs_header(reg_size):
             return bit_mask
 
         fout.write('\n')
-        fout.write('    struct {}\n    {{\n\n'.format(reg_type))
-        for reg in reg_json:
+        fout.write('    struct {}_{}\n    {{\n\n'.format(reg_type, data_width))
+        for reg in registers:
             # FP registers all have "sp" and "dp" fields
             if reg_type == 'FP':
                 reg['fields']['sp'] = {'low_bit': 0, 'high_bit': 31, 'readonly': False}
@@ -329,10 +317,10 @@ def gen_csr_field_idxs_header(reg_size):
 
         fout.write('\n    };\n')
 
-    WriteRegisterFieldIdxs("CSR", reg_csr_json_filename, csr_fi_header_file)
-    WriteRegisterFieldIdxs("FP",  reg_fp_json_filename,  csr_fi_header_file)
-    WriteRegisterFieldIdxs("INT", reg_int_json_filename, csr_fi_header_file)
-    WriteRegisterFieldIdxs("VEC", reg_vec_json_filename, csr_fi_header_file)
+    WriteRegisterFieldIdxs("CSR", registers["csr"].reg_defs, csr_fi_header_file)
+    WriteRegisterFieldIdxs("FP",  registers["fp"].reg_defs,  csr_fi_header_file)
+    WriteRegisterFieldIdxs("INT", registers["int"].reg_defs, csr_fi_header_file)
+    WriteRegisterFieldIdxs("VEC", registers["vec128"].reg_defs, csr_fi_header_file)
 
     csr_fi_header_file.write(CSR_NUM_FILE_FOOTER)
     csr_fi_header_file.close()
@@ -356,11 +344,11 @@ def gen_csr_bitmask_header(reg_size):
 
     for k, v in CSR_DEFS.items():
         # Print only if there are bit flags
-        if v[2]:
+        if v['fields']:
             csr_bf_header_file.write("    namespace "+
-                                     (v[0]).upper()+
+                                     (v['name']).upper()+
                                      "_" + str(data_width) + "_bitmasks {\n")
-            fields = v[2]
+            fields = v['fields']
             for field_name in fields:
                 if field_name.lower() != "resv" and field_name.lower() != "wpri":
                     high_bit = fields[field_name]['high_bit']
@@ -370,7 +358,7 @@ def gen_csr_bitmask_header(reg_size):
                                              field_name + " = " + hex(mask) + ";\n")
 
             csr_bf_header_file.write("    } // namespace "+
-                                     (v[0]).upper()+
+                                     (v['name']).upper()+
                                      "_" + str(data_width) + "_bitfield\n\n")
 
             csr_keys_with_bitmasks.add(k)
@@ -378,7 +366,7 @@ def gen_csr_bitmask_header(reg_size):
             csr_keys_without_bitmasks.add(k)
 
     csr_bf_header_file.write('\n\n')
-    csr_bf_header_file.write('    inline uint64_t GetCSRBitMask(uint32_t reg_num, uint32_t field_idx) {\n')
+    csr_bf_header_file.write('    inline uint64_t GetCSR{}BitMask(uint32_t reg_num, uint32_t field_idx) {{\n'.format(data_width))
     csr_bf_header_file.write('        static std::vector<std::vector<uint64_t>> csr_bitmasks;\n')
     csr_bf_header_file.write('        if (csr_bitmasks.empty()) {\n')
     csr_bf_header_file.write('            csr_bitmasks.resize({});\n\n'.format(max_csr_num+1))
@@ -388,11 +376,11 @@ def gen_csr_bitmask_header(reg_size):
             continue
 
         csr_num = int(k)
-        csr_name = v[0].upper()
+        csr_name = v['name'].upper()
 
         csr_bf_header_file.write('            // {}\n'.format(csr_name))
         csr_bf_header_file.write('            csr_bitmasks[{}] = {{\n'.format(csr_num))
-        fields = v[2]
+        fields = v['fields']
         bitmasks = []
         for field_name in fields:
             if field_name.lower() != "resv" and field_name.lower() != "wpri":

@@ -11,12 +11,14 @@ target_link_libraries(pegasusinsts
     rvv
     rvzicsr
     rvzifencei
+    rvzihintpause
     rvzicond
     rvzcmp
     rvzcmt
     rvzabha
     rvzilsd
     rvzfa
+    rvzfh
     rvv
 )
 
@@ -29,11 +31,15 @@ add_subdirectory(b)
 add_subdirectory(v)
 add_subdirectory(zicsr)
 add_subdirectory(zifencei)
+add_subdirectory(zihintpause)
 add_subdirectory(zicond)
 add_subdirectory(zcmp)
 add_subdirectory(zcmt)
 add_subdirectory(zabha)
 add_subdirectory(zilsd)
 add_subdirectory(zfa)
+add_subdirectory(zfh)
 
 add_dependencies(pegasusinsts AutogenArchFiles)
+
+install(FILES ${PROJECT_BINARY_DIR}/libpegasusinsts.a DESTINATION lib)

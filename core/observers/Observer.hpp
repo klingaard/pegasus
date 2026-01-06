@@ -85,9 +85,9 @@ namespace pegasus
                 const size_t num_bytes = sizeof(TYPE);
                 assert((offset + num_bytes) <= value_.size());
                 TYPE val = 0;
-                for (size_t i = offset; i < num_bytes; ++i)
+                for (size_t i = 0; i < num_bytes; ++i)
                 {
-                    val |= static_cast<TYPE>(value_[i]) << (i * 8);
+                    val |= static_cast<TYPE>(value_[offset + i]) << (i * 8);
                 }
                 return val;
             }
@@ -137,7 +137,13 @@ namespace pegasus
             RegValue reg_value;
         };
 
-        using SrcReg = ObservedReg;
+        struct SrcReg : ObservedReg
+        {
+            using ObservedReg::ObservedReg;
+
+            // store LMUL-wide register values // only for sources
+            std::vector<RegValue> lmul_values;
+        };
 
         struct DestReg : ObservedReg
         {
@@ -201,6 +207,10 @@ namespace pegasus
             }
         }
 
+        const std::vector<MemRead> & getMemoryReads() const { return mem_reads_; }
+
+        const std::vector<MemWrite> & getMemoryWrites() const { return mem_writes_; }
+
       protected:
         uint64_t pc_;
         uint64_t opcode_;
@@ -241,6 +251,8 @@ namespace pegasus
                     sparta_assert(false, "Invalid register type!");
             }
         }
+
+        std::vector<uint8_t> makeVectorRegValue(const std::vector<uint64_t> & words);
 
         std::vector<uint64_t> readVectorRegister_(PegasusState* state, RegId reg_id) const;
 

@@ -3,6 +3,7 @@
 #include "elfio/elfio.hpp"
 
 #include "include/PegasusTypes.hpp"
+#include "sim/PegasusSimParameters.hpp"
 #include "system/SimpleUART.hpp"
 #include "system/MagicMemory.hpp"
 
@@ -22,6 +23,8 @@ namespace sparta::memory
 
 namespace pegasus
 {
+    class Observer;
+
     class PegasusSystem : public sparta::Unit
     {
       public:
@@ -34,8 +37,6 @@ namespace pegasus
             PegasusSystemParameters(sparta::TreeNode* node) : sparta::ParameterSet(node) {}
 
             PARAMETER(bool, enable_uart, false, "Enable a Uart")
-            HIDDEN_PARAMETER(std::vector<std::string>, workload_and_args, {},
-                             "Workload and command line arguments")
         };
 
         // Constructor
@@ -44,14 +45,20 @@ namespace pegasus
         // Get pointer to system memory
         sparta::memory::SimpleMemoryMapNode* getSystemMemory() { return memory_map_.get(); }
 
+        // Give observers their callbacks to read/write memory operations
+        void registerMemoryCallbacks(Observer* observer);
+
         // Get starting PC from ELF
         Addr getStartingPc() const { return starting_pc_; }
 
         // Tell the system we're using pass/fail criteria for stopping simulation
         void enableEOTPassFailMode();
 
-        // Get the workload and its program arguments
-        const std::vector<std::string> & getWorkloadAndArgs() const { return workload_and_args_; }
+        // Get all workloads and their program arguments
+        const PegasusSimParameters::WorkloadsAndArgs & getWorkloadsAndArgs() const
+        {
+            return workloads_and_args_;
+        }
 
         const std::unordered_map<Addr, std::string> & getSymbols() const { return symbols_; }
 
@@ -104,7 +111,7 @@ namespace pegasus
         void createMemoryMappings_(sparta::TreeNode* sys_node);
 
         // Workload and workload arguments
-        const std::vector<std::string> workload_and_args_;
+        const PegasusSimParameters::WorkloadsAndArgs workloads_and_args_;
         void loadWorkload_(const std::string & workload);
         ELFIO::elfio elf_reader_;
         Addr starting_pc_;
