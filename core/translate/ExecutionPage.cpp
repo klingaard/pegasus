@@ -36,8 +36,9 @@ namespace pegasus
     // Therefore, the offset can be shifted to the right by 1 to
     // reduce memory usage (X is "don't care").
     //
-    //                                                          |11|
-    // |     xlation      |         page index                  |10|987654321|0
+    // +--------------------------------------------------------+------------+-+
+    // |                  |                                     |11|         | |
+    // |     xlation      |         page index                  |10|987654321|0|
     // +--------------------------------------------------------+------------+-+
     // |   va->pa bits    |    addr_idx (based on size)         |   offset   |X|
     // +--------------------------------------------------------+------------+-+
@@ -59,7 +60,7 @@ namespace pegasus
     //
     //
     Action::ItrType ExecutionPage::translatedPageExecute_(PegasusState* state,
-                                                           Action::ItrType action_it)
+                                                          Action::ItrType action_it)
     {
         // Check to see if we're still on the same page
         const auto vaddr = state->getPc();
@@ -94,7 +95,8 @@ namespace pegasus
         return ++action_it;
     }
 
-    Action::ItrType ExecutionPage::InstExecute::setInst_(PegasusState* state, Action::ItrType action_it)
+    Action::ItrType ExecutionPage::InstExecute::setInst_(PegasusState* state,
+                                                         Action::ItrType action_it)
     {
         // Set the current instruction
         state->setCurrentInst(inst_);

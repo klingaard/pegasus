@@ -17,8 +17,50 @@ namespace pegasus
     /*!
      * \class ExecutionPage
      *
-     * This class holds 1 4k group of executable instructions.  The
-     * ExecutionCache hold 1..* ExecutionPage objects.
+     * This class holds 4k group of executable instructions for a
+     * specific sized page.  For example, an ExecutionPage can be 4k,
+     * 1MB, 2MB, etc.
+     *
+     * An ExecutionPage instance will be created by Translate for each
+     * page to cover that area of executable instructions.  As an
+     * example, if a translation page was created to cover 1MB of
+     * memory and a running application is contained to that page of
+     * memory, then there can be up to 256 4K pages in the
+     * ExecutionPage instance (4k * 256 == 1MB).
+     *
+     * When a fetch address hits in this ExecutionPage, the vaddr's
+     * page index will be extracted based on the page size (example,
+     * which 4k page of a 1MB space).  This is the index into which 4k
+     * page of instructions will be executed.
+     *
+     *             std::map               std::vector
+     *      +-------------------+    +-------------------+
+     *      | vaddr page index  | -> |    vaddr offset   | -> InstExecute
+     *      +-------------------+    +-------------------+
+     *                                2048 entries (4k/2)
+     *
+     * If that 4k area has never been accessed, a 4k block of
+     * `InstExecute` class objects will be created. This is stashed in
+     * the std::map called `decode_block_`.  Each InstExecute object
+     * in that decode block begins life as an unknown instruction and
+     * must be fetched, decoded, setup and then returned for
+     * execution.  After the setup, that instruction at that address
+     * will not need to be fetched/decoded again.
+     *
+     * The flow for setting up a new instruction:
+     *
+     *    ExecutionPage::translatedPageExecute_()
+     *        -> returns InstExecute::getInstActionGroup()
+     *             -> inst_action_group_ -> setupInst_()
+     *    InstExecute::setupInst_()
+     *        -> Calls Execute::execute_action_group to get instruction actions
+     *             -> inst_action_group_ reset to instruction actions
+     *        -> Returns instruction actions
+     *
+     * The flow the second time the instruction is seen:
+     *    ExecutionPage::translatedPageExecute_()
+     *        -> returns InstExecute::getInstActionGroup()
+     *             -> inst_action_group_ -> instruction actions setup from first round
      *
      */
     class ExecutionPage
@@ -28,13 +70,13 @@ namespace pegasus
         using base_type = ExecutionPage;
 
         ExecutionPage(const PegasusTranslationState::TranslationResult & translation_result,
-                       ActionGroup * fetch_action_group,
-                       ActionGroup * execute_action_group) :
+                      ActionGroup * fetch_action_group,
+                      ActionGroup * execute_action_group) :
             translated_page_group_("ExecutionPageGroup",
                                    pegasus::Action::createAction<
                                    &ExecutionPage::translatedPageExecute_>(this,
-                                                                            "ExecutionPageExecute",
-                                                                            ActionTags::TRANSLATION_PAGE_EXECUTE)),
+                                                                           "ExecutionPageExecute",
+                                                                           ActionTags::TRANSLATION_PAGE_EXECUTE)),
             fetch_action_group_(fetch_action_group),
             execute_action_group_(execute_action_group),
             default_block_(2048, InstExecute(&translated_page_group_, execute_action_group_)),
@@ -44,8 +86,6 @@ namespace pegasus
             // This instruction execute class represents a potential
             // page crosser
             auto & last_inst_exe = default_block_.back();
-
-            // Replace with a different instruction execution instance
             last_inst_exe = InstExecute(&translated_page_group_,
                                         execute_action_group_, true);
         }
