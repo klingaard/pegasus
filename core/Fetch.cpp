@@ -50,5 +50,4 @@ namespace pegasus
         // Keep going
         return ++action_it;
     }
-    }
 } // namespace pegasus

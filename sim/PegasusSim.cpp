@@ -64,7 +64,7 @@ namespace pegasus
             return false;
         }
 
-        ActionGroup* next_action_group = state->getFetchUnit()->getActionGroup();
+        ActionGroup* next_action_group = state->getFetchUnit()->getFetchActionGroup();
         do
         {
             next_action_group = next_action_group->execute(state);

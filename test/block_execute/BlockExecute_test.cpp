@@ -10,13 +10,17 @@ int main()
 {
     sparta::Scheduler scheduler;
 
-    pegasus::PegasusSim pegasus_sim(&scheduler, {}, {}, 0);
+    pegasus::PegasusSim pegasus_sim(&scheduler);
 
+    sparta::app::SimulationConfiguration config;
+    config.processParameter("top.*.*.params.quantum", "20000000");
+    pegasus_sim.configure(0, nullptr, &config);
     pegasus_sim.buildTree();
     pegasus_sim.configureTree();
     pegasus_sim.finalizeTree();
 
-    //pegasus_sim.installTaps({sparta::log::TapDescriptor("top", "info", "1")});
+    // pegasus_sim.installTaps({sparta::log::TapDescriptor("top", "info", "1")});
+    // pegasus_sim.installTaps({sparta::log::TapDescriptor("top", "debug", "1")});
 
     auto state = pegasus_sim.getPegasusCore(0)->getPegasusState();
     auto fetch_unit = state->getFetchUnit();
@@ -70,7 +74,8 @@ int main()
                       << std::endl;
             break_out += 10000000;
         }
-    } while (state->getPc() != 0x00000000c0000010ull);
+    } while (nullptr != next_action_group);
+    //} while (state->getPc() != 0x00000000c0000010ull);
 
     std::cout << "Executed: " << state->getSimState()->inst_count << std::endl;
 

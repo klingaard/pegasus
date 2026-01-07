@@ -258,7 +258,7 @@ namespace pegasus
         sim_state_.sim_pause_reason = SimPauseReason::INVALID;
         // We replace the next ActionGroup pointer to pause the sim, so it needs to
         // be set back to Fetch
-        finish_action_group_.setNextActionGroup(fetch_unit_->getActionGroup());
+        finish_action_group_.setNextActionGroup(fetch_unit_->getFetchActionGroup());
     }
 
     sparta::Register* PegasusState::getSpartaRegister(const mavis::OperandInfo::Element* operand)

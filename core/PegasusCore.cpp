@@ -332,7 +332,7 @@ namespace pegasus
         {
             DLOG("Running hart" << std::dec << current_hart_id_);
             Fetch* fetch = state->getFetchUnit();
-            ActionGroup* next_action_group = fetch->getActionGroup();
+            ActionGroup* next_action_group = fetch->getFetchActionGroup();
             while (next_action_group)
             {
                 next_action_group = next_action_group->execute(state);
