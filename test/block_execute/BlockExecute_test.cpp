@@ -57,7 +57,7 @@ int main()
     pegasus::ActionGroup* next_action_group = fetch_unit->getFetchActionGroup();
     uint32_t break_out = 10000000;
     tstate->makeRequest(virt_page_address, 4);
-    tstate->setResult(virt_page_address, phys_page_address, 4, pegasus::PageSize::SIZE_4K);
+    tstate->setResult(virt_page_address, phys_page_address, 4, pegasus::translate_types::PageSize::SIZE_4K);
 
     pegasus::ExecutionPage translation_page(tstate->getResult(),
                                              fetch_action_group,
@@ -84,11 +84,11 @@ int main()
     // VA -> PA mapping:
     //    0xFFFF_FFFF_FFFF_0040_0000 -> 0x0000_0000_0000_0840_0000
 
-    virt_page_address = 0xFFFFFFFFF0000000ull | pegasus::translate_types::getPageMask(pegasus::PageSize::SIZE_4M);
-    phys_page_address = 0x0000000008000000ull | pegasus::translate_types::getPageMask(pegasus::PageSize::SIZE_4M);
+    virt_page_address = 0xFFFFFFFFF0000000ull | pegasus::translate_types::getPageMask(pegasus::translate_types::PageSize::SIZE_4M);
+    phys_page_address = 0x0000000008000000ull | pegasus::translate_types::getPageMask(pegasus::translate_types::PageSize::SIZE_4M);
 
     tstate->makeRequest(virt_page_address, 4);
-    tstate->setResult(virt_page_address, phys_page_address, 4, pegasus::PageSize::SIZE_4M);
+    tstate->setResult(virt_page_address, phys_page_address, 4, pegasus::translate_types::PageSize::SIZE_4M);
 
     pegasus::ExecutionPage translation_page_split(tstate->getResult(),
                                                    fetch_action_group,

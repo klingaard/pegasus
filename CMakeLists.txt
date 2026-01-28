@@ -112,7 +112,7 @@ target_include_directories(pegasuslibs INTERFACE ${Boost_INCLUDE_DIRS})
 set(MAVIS_CXX_STANDARD 23)
 add_subdirectory(mavis SYSTEM)
 get_target_property(MAVIS_INCLUDES mavis INCLUDE_DIRECTORIES)
-include_directories(${MAVIS_INCLUDES})
+include_directories(SYSTEM ${MAVIS_INCLUDES})
 
 # SoftFloat
 target_include_directories(pegasuslibs SYSTEM INTERFACE softfloat)

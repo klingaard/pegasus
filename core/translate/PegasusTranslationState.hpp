@@ -63,11 +63,11 @@ namespace pegasus
             TranslationResult() = default;
 
             TranslationResult(Addr vaddr, Addr paddr,
-                              size_t access_sz, PageSize page_sz) :
+                              size_t access_sz, translate_types::PageSize page_sz) :
                 vaddr_(vaddr),
                 paddr_(paddr),
                 access_size_(access_sz),
-                page_index_(pageSize(page_sz) - 1),
+                page_index_(getPageMask(page_sz) - 1),
                 page_mask_(~(page_index_))
             {
             }
@@ -156,7 +156,7 @@ namespace pegasus
         }
 
         void setResult(const Addr vaddr, const Addr paddr,
-                       const size_t access_size, const PageSize page_size)
+                       const size_t access_size, const translate_types::PageSize page_size)
         {
             sparta_assert(results_cnt_ < results_.size());
             results_[results_cnt_++] = {vaddr, paddr, access_size, page_size};

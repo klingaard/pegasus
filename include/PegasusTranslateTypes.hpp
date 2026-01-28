@@ -269,7 +269,7 @@ namespace pegasus::translate_types
         }
     }
 
-    static inline PageSize getPageSize(const uint32_t level)
+    static inline Addr getPageMask(const PageSize pg_size)
     {
         static const std::vector<uint64_t> pagesize_to_mask = {0x1000,           // '4k'
                                                                0x200000,         // '2MB'

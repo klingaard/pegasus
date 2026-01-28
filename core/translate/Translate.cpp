@@ -387,7 +387,7 @@ namespace pegasus
             {
                 const PegasusTranslationState::TranslationResult & result =
                     translation_state->getResult();
-                h_stage_requests.emplace_back(result.getPAddr(), result.getSize());
+                h_stage_requests.emplace_back(result.getPAddr(), result.getAccessSize());
                 translation_state->popResult();
             }
 

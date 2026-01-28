@@ -54,7 +54,7 @@ class PegasusTranslateTester
 
         // Set result
         translation_state->setResult(vaddr, vaddr | 0x80000000, access_size,
-                                     pegasus::PageSize::SIZE_4K);
+                                     pegasus::translate_types::PageSize::SIZE_4K);
 
         // Get number of requests and results
         EXPECT_EQUAL(translation_state->getNumRequests(), 1);
@@ -112,10 +112,10 @@ class PegasusTranslateTester
         // Set results
         translation_state->setResult(vaddr, vaddr | 0x80000000,
                                      access_size - request.getMisalignedBytes(),
-                                     pegasus::PageSize::SIZE_4K);
+                                     pegasus::translate_types::PageSize::SIZE_4K);
         translation_state->setResult(vaddr, (vaddr + request.getMisalignedBytes()) | 0x80000000,
                                      request.getMisalignedBytes(),
-                                     pegasus::PageSize::SIZE_4K);
+                                     pegasus::translate_types::PageSize::SIZE_4K);
 
         // Get number of requests and results
         EXPECT_EQUAL(translation_state->getNumRequests(), 1);
@@ -152,7 +152,7 @@ class PegasusTranslateTester
                 translation_state->getRequest();
             const uint64_t paddr = request.getVAddr() | 0x80000000;
             translation_state->setResult(request.getVAddr(), paddr, request.getAccessSize(),
-                                         pegasus::PageSize::SIZE_4K);
+                                         pegasus::translate_types::PageSize::SIZE_4K);
             translation_state->popRequest();
 
             // Can't make any new requests

@@ -219,7 +219,7 @@ namespace pegasus::cosim
 
     EventAccessor PegasusCoSim::step(CoreId core_id, HartId hart_id)
     {
-        ActionGroup* next_action_group = fetch_.at(core_id).at(hart_id)->getActionGroup();
+        ActionGroup* next_action_group = fetch_.at(core_id).at(hart_id)->getFetchActionGroup();
         PegasusState* state = pegasus_sim_->getPegasusCore(core_id)->getPegasusState(hart_id);
         do
         {

@@ -103,35 +103,6 @@ namespace pegasus
         bool operator==(const RegId & other) const = default;
     };
 
-
-    inline Addr pageSize(PageSize pg_size)
-    {
-        switch(pg_size)
-        {
-            case PageSize::SIZE_4K:
-                return 0x1000;
-                break;
-            case PageSize::SIZE_2M:
-                return 0x200000;
-                break;
-            case PageSize::SIZE_4M:
-                return 0x400000;
-                break;
-            case PageSize::SIZE_1G:
-                return 0x40000000ull;
-                break;
-            case PageSize::SIZE_512G:
-                return 0x1000000000ull;
-                break;
-            case PageSize::SIZE_256T:
-                return 0x40000000000ull;
-                break;
-            case PageSize::INVALID:
-                assert(!"Invalid PageSize");
-                break;
-        }
-        return 0;
-    }
     enum class RoundingMode
     {
         EVEN = 0,
