@@ -79,8 +79,6 @@ int main()
 
     std::cout << "Executed: " << state->getSimState()->inst_count << std::endl;
 
-    return 0;
-
     ////////////////////////////////////////////////////////////////////////////////
     // Cross a 4M page with a 32-bit opcode that crosses a 4k page
     // VA -> PA mapping:
@@ -122,6 +120,9 @@ int main()
     state->writeMemory(phys_page_address + page_edge + 0xc, uint16_t(0xfe11)); // 0xfe -> 0x00, 1st half
     state->writeMemory(phys_page_address + page_edge + 0xe, uint16_t(0x1fe3)); // 0x00 -> 0x02, 2nd half
 
+    pegasus_sim.installTaps({sparta::log::TapDescriptor("top", "info", "1")});
+    pegasus_sim.installTaps({sparta::log::TapDescriptor("top", "debug", "1")});
+
     next_action_group = fetch_unit->getFetchActionGroup();
     break_out = 30000000;
     do {
@@ -134,7 +135,7 @@ int main()
                       << std::endl;
             break_out += 10000000;
         }
-    } while (state->getPc() != 0x00000000c0000010ull);
+    } while (nullptr != next_action_group);
 
     std::cout << "Executed: " << state->getSimState()->inst_count << std::endl;
 
